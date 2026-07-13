@@ -10,10 +10,13 @@ Run **PHP: Go to Symbol (incl. inherited)** from the command palette while editi
 
 ```bash
 git clone git@github.com:farrugia-vscode/php-inherited-symbols.git ~/www/vscode-extensions/php-inherited-symbols
+cd ~/www/vscode-extensions/php-inherited-symbols
+bun install
+bun run build   # compiles TS → out/extension.js
 ln -s ~/www/vscode-extensions/php-inherited-symbols ~/.vscode/extensions/php-inherited-symbols
 ```
 
-Reload VS Code.
+Reload VS Code. Dev loop: `bun run watch` (rebuild on change), `bun run check` (type-check).
 
 ## License
 

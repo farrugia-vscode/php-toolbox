@@ -1,0 +1,94 @@
+import * as vscode from 'vscode';
+import type { Member } from './types';
+import { MEMBER_KINDS, findClassLikeSymbols } from './classSymbols';
+import { findWordPosition, normalizeDefinition, parseTypeReferences } from './typeReferences';
+
+const MAX_DEPTH = 25;
+
+/**
+ * Walks a class's inheritance graph (parents, interfaces, traits) and collects
+ * every member declared along the way. One instance = one resolution: state
+ * (`seen`, `members`) lives for the duration of a single {@link resolve} call.
+ */
+export class InheritanceResolver {
+  private readonly seen = new Set<string>();
+  private readonly members = new Map<string, Member>();
+
+  async resolve(uri: vscode.Uri, classSymbol: vscode.DocumentSymbol): Promise<Map<string, Member>> {
+    await this.collect(uri, classSymbol, 0);
+    return this.members;
+  }
+
+  private async collect(uri: vscode.Uri, classSymbol: vscode.DocumentSymbol, depth: number): Promise<void> {
+    const key = uri.toString() + '#' + classSymbol.name;
+    if (depth > MAX_DEPTH || this.seen.has(key)) {
+      return;
+    }
+    this.seen.add(key);
+
+    this.collectOwnMembers(uri, classSymbol);
+
+    const document = await vscode.workspace.openTextDocument(uri);
+    const { names } = parseTypeReferences(document, classSymbol);
+
+    for (const name of names) {
+      await this.collectParent(uri, document, classSymbol, name, depth);
+    }
+  }
+
+  private collectOwnMembers(uri: vscode.Uri, classSymbol: vscode.DocumentSymbol): void {
+    for (const child of classSymbol.children ?? []) {
+      if (!MEMBER_KINDS.has(child.kind) || this.members.has(child.name)) {
+        continue;
+      }
+      this.members.set(child.name, {
+        name: child.name,
+        detail: child.detail,
+        kind: child.kind,
+        className: classSymbol.name,
+        uri,
+        range: child.selectionRange,
+      });
+    }
+  }
+
+  private async collectParent(
+    uri: vscode.Uri,
+    document: vscode.TextDocument,
+    classSymbol: vscode.DocumentSymbol,
+    name: string,
+    depth: number,
+  ): Promise<void> {
+    const namePosition = findWordPosition(
+      document,
+      name,
+      classSymbol.selectionRange.start.line,
+      classSymbol.range.end.line,
+    );
+    if (!namePosition) {
+      return;
+    }
+    const definition = normalizeDefinition(
+      await vscode.commands.executeCommand<Array<vscode.Location | vscode.LocationLink>>(
+        'vscode.executeDefinitionProvider',
+        uri,
+        namePosition,
+      ),
+    );
+    if (!definition) {
+      return;
+    }
+    const parentSymbols = findClassLikeSymbols(
+      (await vscode.commands.executeCommand<vscode.DocumentSymbol[]>(
+        'vscode.executeDocumentSymbolProvider',
+        definition.uri,
+      )) ?? [],
+    );
+    const parentSymbol =
+      parentSymbols.find((symbol) => symbol.range.contains(definition.position)) ??
+      parentSymbols.find((symbol) => symbol.name.split('\\').pop() === name.split('\\').pop());
+    if (parentSymbol) {
+      await this.collect(definition.uri, parentSymbol, depth + 1);
+    }
+  }
+}
