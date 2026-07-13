@@ -1,0 +1,22 @@
+{
+  "name": "php-inherited-symbols",
+  "displayName": "PHP Inherited Symbols",
+  "description": "Go to symbol including members inherited from parent classes and traits",
+  "version": "0.0.1",
+  "publisher": "farrugia",
+  "icon": "icon.png",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": ["Other"],
+  "activationEvents": ["onLanguage:php"],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "phpInheritedSymbols.show",
+        "title": "PHP: Go to Symbol (incl. inherited)"
+      }
+    ]
+  }
+}
