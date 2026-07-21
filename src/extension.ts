@@ -7,7 +7,45 @@ import type { Member } from './types';
 import { warmIndex } from './workspaceIndex';
 
 interface MemberQuickPickItem extends vscode.QuickPickItem {
-  member: Member;
+  member?: Member;
+}
+
+/**
+ * Own members first, then one group per parent class or trait: a flat list of a few
+ * hundred inherited members buries the handful that belong to the class being read.
+ */
+function groupByOrigin(members: Member[], ownName: string | undefined): MemberQuickPickItem[] {
+  const origins = [...new Set(members.map((member) => member.className.split('\\').pop() ?? ''))].sort(
+    (first, second) => {
+      if (first === ownName) {
+        return -1;
+      }
+      if (second === ownName) {
+        return 1;
+      }
+      return first.localeCompare(second);
+    },
+  );
+
+  return origins.flatMap((origin) => {
+    const inOrigin = members
+      .filter((member) => (member.className.split('\\').pop() ?? '') === origin)
+      .sort((first, second) => first.name.localeCompare(second.name));
+
+    const separator: MemberQuickPickItem = {
+      label: origin === ownName ? `${origin} (${inOrigin.length})` : `inherited from ${origin} (${inOrigin.length})`,
+      kind: vscode.QuickPickItemKind.Separator,
+    };
+
+    return [
+      separator,
+      ...inOrigin.map((member) => ({
+        label: `$(${KIND_ICON[member.kind] ?? 'symbol-misc'}) ${member.name}`,
+        description: member.detail || '',
+        member,
+      })),
+    ];
+  });
 }
 
 async function show(): Promise<void> {
@@ -37,25 +75,14 @@ async function show(): Promise<void> {
   );
 
   const ownName = classSymbol.name.split('\\').pop();
-  const items: MemberQuickPickItem[] = [...members.values()]
-    .sort((first, second) => first.name.localeCompare(second.name))
-    .map((member) => {
-      const icon = KIND_ICON[member.kind] ?? 'symbol-misc';
-      const from = member.className.split('\\').pop();
-      return {
-        label: `$(${icon}) ${member.name}`,
-        description: from === ownName ? '' : from,
-        detail: member.detail || '',
-        member,
-      };
-    });
+  const items = groupByOrigin([...members.values()], ownName);
 
   const picked = await vscode.window.showQuickPick(items, {
-    placeHolder: `${ownName} — ${items.length} members (incl. inherited)`,
+    placeHolder: `${ownName} — ${members.size} members (incl. inherited)`,
     matchOnDescription: true,
     matchOnDetail: true,
   });
-  if (!picked) {
+  if (!picked?.member) {
     return;
   }
 
