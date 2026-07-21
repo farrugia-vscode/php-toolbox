@@ -1,7 +1,8 @@
 import * as vscode from 'vscode';
-import type { Member } from './types';
-import { MEMBER_KINDS, findClassLikeSymbols } from './classSymbols';
+import type { Definition, Member } from './types';
+import { CLASS_KINDS, MEMBER_KINDS, findClassLikeSymbols } from './classSymbols';
 import {
+  docblockRange,
   findWordPosition,
   normalizeDefinition,
   parseDocblockMembers,
@@ -9,6 +10,26 @@ import {
 } from './typeReferences';
 
 const MAX_DEPTH = 25;
+
+/**
+ * Falls back to the workspace symbol index: definition providers usually ignore names
+ * written inside a docblock, which is exactly where `@mixin` targets appear.
+ */
+async function findClassByName(name: string): Promise<Definition | null> {
+  const shortName = name.split('\\').pop() ?? name;
+
+  const symbols =
+    (await vscode.commands.executeCommand<vscode.SymbolInformation[]>(
+      'vscode.executeWorkspaceSymbolProvider',
+      shortName,
+    )) ?? [];
+
+  const match = symbols.find(
+    (symbol) => CLASS_KINDS.has(symbol.kind) && (symbol.name.split('\\').pop() ?? '') === shortName,
+  );
+
+  return match ? { uri: match.location.uri, position: match.location.range.start } : null;
+}
 
 /**
  * Walks a class's inheritance graph (parents, interfaces, traits) and collects
@@ -91,22 +112,22 @@ export class InheritanceResolver {
     name: string,
     depth: number,
   ): Promise<void> {
-    const namePosition = findWordPosition(
-      document,
-      name,
-      classSymbol.selectionRange.start.line,
-      classSymbol.range.end.line,
-    );
+    // `@mixin` targets live in the docblock, above the class declaration.
+    const classLine = classSymbol.selectionRange.start.line;
+    const fromLine = docblockRange(document, classLine)?.[0] ?? classLine;
+
+    const namePosition = findWordPosition(document, name, fromLine, classSymbol.range.end.line);
     if (!namePosition) {
       return;
     }
-    const definition = normalizeDefinition(
-      await vscode.commands.executeCommand<Array<vscode.Location | vscode.LocationLink>>(
-        'vscode.executeDefinitionProvider',
-        uri,
-        namePosition,
-      ),
-    );
+    const definition =
+      normalizeDefinition(
+        await vscode.commands.executeCommand<Array<vscode.Location | vscode.LocationLink>>(
+          'vscode.executeDefinitionProvider',
+          uri,
+          namePosition,
+        ),
+      ) ?? (await findClassByName(name));
     if (!definition) {
       return;
     }
