@@ -1,7 +1,12 @@
 import * as vscode from 'vscode';
 import type { Member } from './types';
 import { MEMBER_KINDS, findClassLikeSymbols } from './classSymbols';
-import { findWordPosition, normalizeDefinition, parseTypeReferences } from './typeReferences';
+import {
+  findWordPosition,
+  normalizeDefinition,
+  parseDocblockMembers,
+  parseTypeReferences,
+} from './typeReferences';
 
 const MAX_DEPTH = 25;
 
@@ -29,10 +34,37 @@ export class InheritanceResolver {
     this.collectOwnMembers(uri, classSymbol);
 
     const document = await vscode.workspace.openTextDocument(uri);
+
+    this.collectDocblockMembers(uri, document, classSymbol);
+
     const { names } = parseTypeReferences(document, classSymbol);
 
     for (const name of names) {
       await this.collectParent(uri, document, classSymbol, name, depth);
+    }
+  }
+
+  /** Members declared through `@property` / `@method` annotations on the class. */
+  private collectDocblockMembers(
+    uri: vscode.Uri,
+    document: vscode.TextDocument,
+    classSymbol: vscode.DocumentSymbol,
+  ): void {
+    for (const member of parseDocblockMembers(document, classSymbol)) {
+      if (this.members.has(member.name)) {
+        continue;
+      }
+
+      const position = new vscode.Position(member.line, 0);
+
+      this.members.set(member.name, {
+        name: member.name,
+        detail: member.detail,
+        kind: member.kind,
+        className: classSymbol.name,
+        uri,
+        range: new vscode.Range(position, position),
+      });
     }
   }
 

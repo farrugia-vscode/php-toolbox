@@ -70,11 +70,11 @@ export function parseTypeReferences(
  * Reads `@mixin` targets from the docblock preceding the class, and returns the line
  * the search for those names should start from.
  */
-function collectMixins(
+/** Line range of the docblock preceding the class declaration, if there is one. */
+export function docblockRange(
   document: vscode.TextDocument,
   startLine: number,
-  names: Set<string>,
-): number {
+): [number, number] | null {
   let line = startLine - 1;
 
   // Skip attributes and blank lines sitting between the docblock and the class.
@@ -83,7 +83,7 @@ function collectMixins(
   }
 
   if (line < 0 || !/\*\/\s*$/.test(document.lineAt(line).text)) {
-    return startLine;
+    return null;
   }
 
   const docEnd = line;
@@ -92,7 +92,21 @@ function collectMixins(
     line--;
   }
 
-  const docStart = Math.max(line, 0);
+  return [Math.max(line, 0), docEnd];
+}
+
+function collectMixins(
+  document: vscode.TextDocument,
+  startLine: number,
+  names: Set<string>,
+): number {
+  const range = docblockRange(document, startLine);
+
+  if (range === null) {
+    return startLine;
+  }
+
+  const [docStart, docEnd] = range;
 
   for (let current = docStart; current <= docEnd; current++) {
     const match = /@mixin\s+\\?([\w\\]+)/.exec(document.lineAt(current).text);
@@ -103,6 +117,62 @@ function collectMixins(
   }
 
   return docStart;
+}
+
+/** A member declared only in the docblock: `@property`, `@method` and friends. */
+export interface DocblockMember {
+  name: string;
+  kind: vscode.SymbolKind;
+  detail: string;
+  line: number;
+}
+
+/**
+ * Members a class exposes through annotations rather than code. Laravel relies on them
+ * constantly: ide-helper writes model attributes this way, so they are the only trace
+ * of most columns.
+ */
+export function parseDocblockMembers(
+  document: vscode.TextDocument,
+  classSymbol: vscode.DocumentSymbol,
+): DocblockMember[] {
+  const range = docblockRange(document, classSymbol.selectionRange.start.line);
+
+  if (range === null) {
+    return [];
+  }
+
+  const [docStart, docEnd] = range;
+  const members: DocblockMember[] = [];
+
+  for (let line = docStart; line <= docEnd; line++) {
+    const text = document.lineAt(line).text;
+
+    const property = /@property(?:-read|-write)?\s+(\S+)\s+\$(\w+)/.exec(text);
+
+    if (property) {
+      members.push({
+        name: `$${property[2]}`,
+        kind: vscode.SymbolKind.Property,
+        detail: property[1],
+        line,
+      });
+      continue;
+    }
+
+    const method = /@method\s+(?:static\s+)?(?:(\S+)\s+)?(\w+)\s*\(/.exec(text);
+
+    if (method) {
+      members.push({
+        name: method[2],
+        kind: vscode.SymbolKind.Method,
+        detail: method[1] ?? '',
+        line,
+      });
+    }
+  }
+
+  return members;
 }
 
 /** Finds the position of `word`'s short name within a line range, or null. */
