@@ -17,6 +17,10 @@ export function parseTypeReferences(
   const startLine = classSymbol.selectionRange.start.line;
   const endLine = classSymbol.range.end.line;
 
+  // `@mixin` brings in members just like inheritance does, and Laravel leans on it
+  // heavily (ide-helper, Eloquent builders). The docblock sits above the class.
+  const docStart = collectMixins(document, startLine, names);
+
   // Header: everything from the class name line up to the opening brace.
   let header = '';
   let headerEndLine = startLine;
@@ -59,7 +63,46 @@ export function parseTypeReferences(
     }
   }
 
-  return { names, headerRange: [startLine, headerEndLine], traitNames };
+  return { names, headerRange: [docStart, headerEndLine], traitNames };
+}
+
+/**
+ * Reads `@mixin` targets from the docblock preceding the class, and returns the line
+ * the search for those names should start from.
+ */
+function collectMixins(
+  document: vscode.TextDocument,
+  startLine: number,
+  names: Set<string>,
+): number {
+  let line = startLine - 1;
+
+  // Skip attributes and blank lines sitting between the docblock and the class.
+  while (line >= 0 && /^\s*(#\[|$)/.test(document.lineAt(line).text)) {
+    line--;
+  }
+
+  if (line < 0 || !/\*\/\s*$/.test(document.lineAt(line).text)) {
+    return startLine;
+  }
+
+  const docEnd = line;
+
+  while (line >= 0 && !/^\s*\/\*\*/.test(document.lineAt(line).text)) {
+    line--;
+  }
+
+  const docStart = Math.max(line, 0);
+
+  for (let current = docStart; current <= docEnd; current++) {
+    const match = /@mixin\s+\\?([\w\\]+)/.exec(document.lineAt(current).text);
+
+    if (match) {
+      names.add(match[1]);
+    }
+  }
+
+  return docStart;
 }
 
 /** Finds the position of `word`'s short name within a line range, or null. */
