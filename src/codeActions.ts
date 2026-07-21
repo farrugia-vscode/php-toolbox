@@ -1,10 +1,10 @@
 import * as vscode from 'vscode';
 
-const DECLARATION = /^\s*(?:final\s+|readonly\s+)*(abstract\s+)?(class|interface|trait|enum)\s+\w+/m;
+const DECLARATION = /^\s*(?:final\s+|readonly\s+)*(abstract\s+)?(class|interface|trait|enum)\s+\w+/;
 
 /** What the file declares drives the wording: an interface is looked up for its implementations. */
-function title(document: vscode.TextDocument): string | null {
-  const match = DECLARATION.exec(document.getText());
+function title(line: string): string | null {
+  const match = DECLARATION.exec(line);
   if (!match) {
     return null;
   }
@@ -29,8 +29,13 @@ function title(document: vscode.TextDocument): string | null {
 export class UsagesCodeActionProvider implements vscode.CodeActionProvider {
   public static readonly providedCodeActionKinds = [vscode.CodeActionKind.Empty];
 
-  provideCodeActions(document: vscode.TextDocument): vscode.CodeAction[] {
-    const label = title(document);
+  provideCodeActions(
+    document: vscode.TextDocument,
+    range: vscode.Range | vscode.Selection,
+  ): vscode.CodeAction[] {
+    // Only on the declaration line: offered everywhere, it gets in the way while
+    // writing unrelated code inside the class.
+    const label = title(document.lineAt(range.start.line).text);
     if (!label) {
       return [];
     }
