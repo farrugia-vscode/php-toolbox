@@ -1,12 +1,12 @@
 {
-  "name": "php-inherited-symbols",
-  "displayName": "PHP Inherited Symbols",
-  "description": "Go to symbol including members inherited from parent classes and traits",
-  "version": "0.0.2",
+  "name": "php-toolbox",
+  "displayName": "PHP Toolbox",
+  "description": "Navigate PHP code: inherited symbols, and usages of a class, interface or trait grouped by what the code does with it",
+  "version": "0.1.0",
   "publisher": "farrugia",
   "icon": "icon.png",
   "engines": {
-    "vscode": "^1.75.0"
+    "vscode": "^1.85.0"
   },
   "categories": [
     "Other"
@@ -24,8 +24,14 @@
   "contributes": {
     "commands": [
       {
-        "command": "phpInheritedSymbols.show",
-        "title": "PHP: Go to Symbol (incl. inherited)"
+        "command": "phpToolbox.inheritedSymbols",
+        "title": "Go to Symbol (including inherited)",
+        "category": "PHP"
+      },
+      {
+        "command": "phpToolbox.findUsages",
+        "title": "Find usages",
+        "category": "PHP"
       }
     ]
   },

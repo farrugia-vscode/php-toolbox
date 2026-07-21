@@ -1,7 +1,10 @@
 import * as vscode from 'vscode';
 import { KIND_ICON, findClassLikeSymbols, pickEnclosingClass } from './classSymbols';
+import { UsagesCodeActionProvider } from './codeActions';
+import { showUsages } from './findUsages';
 import { InheritanceResolver } from './inheritanceResolver';
 import type { Member } from './types';
+import { warmIndex } from './workspaceIndex';
 
 interface MemberQuickPickItem extends vscode.QuickPickItem {
   member: Member;
@@ -63,7 +66,17 @@ async function show(): Promise<void> {
 }
 
 export function activate(context: vscode.ExtensionContext): void {
-  context.subscriptions.push(vscode.commands.registerCommand('phpInheritedSymbols.show', show));
+  warmIndex();
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('phpToolbox.inheritedSymbols', show),
+    vscode.commands.registerCommand('phpToolbox.findUsages', showUsages),
+    vscode.languages.registerCodeActionsProvider(
+      { scheme: 'file', language: 'php' },
+      new UsagesCodeActionProvider(),
+      { providedCodeActionKinds: UsagesCodeActionProvider.providedCodeActionKinds },
+    ),
+  );
 }
 
 export function deactivate(): void {}
