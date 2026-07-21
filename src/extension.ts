@@ -39,9 +39,13 @@ function groupByOrigin(members: Member[], ownName: string | undefined): MemberQu
 
     return [
       separator,
+      // The origin is repeated on each row on purpose: VS Code drops separators as
+      // soon as the user types, and the group headers go with them.
       ...inOrigin.map((member) => ({
         label: `$(${KIND_ICON[member.kind] ?? 'symbol-misc'}) ${member.name}`,
-        description: member.detail || '',
+        description: [member.detail, origin === ownName ? '' : origin]
+          .filter(Boolean)
+          .join('  ·  '),
         member,
       })),
     ];
