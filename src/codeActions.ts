@@ -3,7 +3,7 @@ import * as vscode from 'vscode';
 const DECLARATION = /^\s*(?:final\s+|readonly\s+)*(abstract\s+)?(class|interface|trait|enum)\s+\w+/;
 
 /** What the file declares drives the wording: an interface is looked up for its implementations. */
-function title(line: string): string | null {
+function usagesTitle(line: string): string | null {
   const match = DECLARATION.exec(line);
   if (!match) {
     return null;
@@ -22,9 +22,16 @@ function title(line: string): string | null {
   return 'Find usages';
 }
 
+function action(title: string, command: string): vscode.CodeAction {
+  const created = new vscode.CodeAction(title, vscode.CodeActionKind.Empty);
+  created.command = { command, title };
+
+  return created;
+}
+
 /**
- * Offers the search in the quick fix menu, so it is reachable with the shortcut people
- * already press, without stealing a binding of its own.
+ * Offers the searches and refactorings in the quick fix menu, so they are reachable with
+ * the shortcut people already press, without stealing a binding of their own.
  */
 export class UsagesCodeActionProvider implements vscode.CodeActionProvider {
   public static readonly providedCodeActionKinds = [vscode.CodeActionKind.Empty];
@@ -33,19 +40,18 @@ export class UsagesCodeActionProvider implements vscode.CodeActionProvider {
     document: vscode.TextDocument,
     range: vscode.Range | vscode.Selection,
   ): vscode.CodeAction[] {
-    // Only on the declaration line: offered everywhere, it gets in the way while
+    // Only on the declaration line: offered everywhere, they get in the way while
     // writing unrelated code inside the class.
-    const label = title(document.lineAt(range.start.line).text);
-    if (!label) {
+    const usages = usagesTitle(document.lineAt(range.start.line).text);
+
+    if (!usages) {
       return [];
     }
 
-    const action = new vscode.CodeAction(label, vscode.CodeActionKind.Empty);
-    action.command = {
-      command: 'phpToolbox.findUsages',
-      title: label,
-    };
-
-    return [action];
+    return [
+      action(usages, 'phpToolbox.findUsages'),
+      action('Rename…', 'phpToolbox.renameType'),
+      action('Move class…', 'phpToolbox.moveClass'),
+    ];
   }
 }

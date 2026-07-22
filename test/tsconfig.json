@@ -1,0 +1,11 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "rootDir": "..",
+    "types": ["node", "bun"]
+  },
+  "include": ["**/*.ts", "../src/**/*.ts"]
+}

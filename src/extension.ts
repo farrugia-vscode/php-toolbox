@@ -3,6 +3,9 @@ import { KIND_ICON, findClassLikeSymbols, pickEnclosingClass } from './classSymb
 import { UsagesCodeActionProvider } from './codeActions';
 import { showUsages } from './findUsages';
 import { InheritanceResolver } from './inheritanceResolver';
+import { forgetPsr4Roots } from './php/psr4';
+import { moveClass, registerFileMoveSync } from './refactor/moveNamespace';
+import { PhpRenameProvider, renameType } from './refactor/renameProvider';
 import type { Member } from './types';
 import { warmIndex } from './workspaceIndex';
 
@@ -99,9 +102,19 @@ async function show(): Promise<void> {
 export function activate(context: vscode.ExtensionContext): void {
   warmIndex();
 
+  // The autoload map decides where a moved class must land, so a stale copy misplaces files.
+  const composer = vscode.workspace.createFileSystemWatcher('**/composer.json');
+  composer.onDidChange(forgetPsr4Roots);
+  composer.onDidCreate(forgetPsr4Roots);
+
   context.subscriptions.push(
     vscode.commands.registerCommand('phpToolbox.inheritedSymbols', show),
     vscode.commands.registerCommand('phpToolbox.findUsages', showUsages),
+    vscode.commands.registerCommand('phpToolbox.moveClass', moveClass),
+    vscode.commands.registerCommand('phpToolbox.renameType', renameType),
+    vscode.languages.registerRenameProvider({ scheme: 'file', language: 'php' }, new PhpRenameProvider()),
+    registerFileMoveSync(),
+    composer,
     vscode.languages.registerCodeActionsProvider(
       { scheme: 'file', language: 'php' },
       new UsagesCodeActionProvider(),
