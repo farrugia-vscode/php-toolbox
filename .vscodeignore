@@ -1,0 +1,10 @@
+.git/**
+.gitignore
+node_modules/**
+src/**
+test/**
+esbuild.ts
+tsconfig.json
+bun.lock
+out/**/*.map
+**/*.vsix
