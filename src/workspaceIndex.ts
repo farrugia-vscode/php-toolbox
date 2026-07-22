@@ -21,6 +21,11 @@ async function readFile(uri: vscode.Uri): Promise<[string, string] | null> {
   }
 }
 
+const changed = new vscode.EventEmitter<vscode.Uri>();
+
+/** Fires whenever a PHP file left the index, so derived indexes can drop their own entry. */
+export const onDidChangeFile = changed.event;
+
 function watchFiles(): void {
   if (watching) {
     return;
@@ -28,12 +33,23 @@ function watchFiles(): void {
   watching = true;
 
   const watcher = vscode.workspace.createFileSystemWatcher('**/*.php');
-  const forget = (uri: vscode.Uri): void => {
-    index?.delete(uri.toString());
+
+  // Re-read rather than just forget: dropping the entry would hide the file from every
+  // later search, since the index is only ever built once.
+  const refresh = async (uri: vscode.Uri): Promise<void> => {
+    const entry = await readFile(uri);
+    if (entry) {
+      index?.set(entry[0], entry[1]);
+    }
+    changed.fire(uri);
   };
-  watcher.onDidChange(forget);
-  watcher.onDidCreate(forget);
-  watcher.onDidDelete(forget);
+
+  watcher.onDidChange((uri) => void refresh(uri));
+  watcher.onDidCreate((uri) => void refresh(uri));
+  watcher.onDidDelete((uri) => {
+    index?.delete(uri.toString());
+    changed.fire(uri);
+  });
 }
 
 /** Only shown once the scan is slow enough to be noticed. */
