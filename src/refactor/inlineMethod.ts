@@ -49,7 +49,9 @@ export function inlineTarget(sourceText: string, method: MethodDeclaration, isFi
   }
 
   if (method.visibility === 'public' && !isFinalClass) {
-    return { error: `${method.name}() is public and could be overridden; inlining it is not safe.` };
+    return {
+      error: `${method.name}() is public and could be overridden: make it private, or the class final, before inlining it.`,
+    };
   }
 
   if (method.params.some((param) => param.isByRef || param.isVariadic)) {

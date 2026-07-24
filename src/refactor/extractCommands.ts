@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { activeTarget, applyPlan, askName } from './apply';
 import { planExtractMethod } from './extractMethod';
 import { planExtractExpression, suggestName, targetExpression, type ExtractTarget } from './extractExpression';
-import { analyzeScopes } from '../php/scopes';
+import { analyzeScopes, scopeAt } from '../php/scopes';
 import { isRefused } from './plan';
 
 /** Name no one writes, used to check a refactoring is possible before asking for a real one. */
@@ -28,7 +28,12 @@ export async function extractMethod(): Promise<void> {
     return;
   }
 
-  const name = await askName('Extract method', 'extracted', 'Name of the new private method');
+  const scopes = analyzeScopes(target.text);
+  const scope = scopeAt(scopes, target.selection.start, target.selection.end);
+  const siblings = scopes.functions
+    .filter((candidate) => candidate.kind === 'method' && candidate.className === scope?.className)
+    .map((candidate) => candidate.name);
+  const name = await askName('Extract method', 'extracted', 'Name of the new private method', siblings);
 
   if (!name) {
     return;
@@ -64,7 +69,15 @@ export async function extractExpression(kind: ExtractTarget, isReplacingAll = fa
     return;
   }
 
-  const name = await askName(TITLES[kind], suggestName(code, kind), code.replace(/\s+/g, ' ').slice(0, 80));
+  const scope = scopeAt(scopes, expression.start, expression.end);
+  const taken =
+    kind === 'variable' && scope ? [...new Set(scope.uses.map((use) => use.name))] : [];
+  const name = await askName(
+    TITLES[kind],
+    suggestName(code, kind),
+    code.replace(/\s+/g, ' ').slice(0, 80),
+    taken,
+  );
 
   if (!name) {
     return;

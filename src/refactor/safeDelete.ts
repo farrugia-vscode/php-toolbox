@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { getPhpIndex, indexedFile, type IndexedFile } from '../php/phpIndex';
 import type { Span } from '../php/scopes';
-import { confirm } from './apply';
+import { confirm, withProgress } from './apply';
 import { classAt } from './classEdits';
 import { findMemberSites } from './callSites';
 import { memberAtCursor } from './renameMember';
@@ -144,7 +144,9 @@ export async function safeDelete(): Promise<void> {
 
   const file = indexedFile(editor.document.uri, editor.document.getText());
   const offset = editor.document.offsetAt(editor.selection.active);
-  const deletion = (await memberDeletion(file, offset)) ?? (await typeDeletion(file, offset));
+  const deletion = await withProgress('Looking for what still uses it…', async () =>
+    (await memberDeletion(file, offset)) ?? (await typeDeletion(file, offset)),
+  );
 
   if (!deletion) {
     vscode.window.showWarningMessage('Place the cursor on a member or on a type declaration.');

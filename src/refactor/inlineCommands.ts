@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { analyzeScopes } from '../php/scopes';
 import { indexedFile, type IndexedFile } from '../php/phpIndex';
-import { activeTarget, applyPlan, confirm } from './apply';
+import { activeTarget, applyPlan, confirm, withProgress } from './apply';
 import { findCallSites, methodAtCursor, type CallSite } from './callSites';
 import { EditSet } from './editSet';
 import { inlineCall, inlineTarget, removeMethod, type InlineTarget } from './inlineMethod';
@@ -76,7 +76,9 @@ export async function inlineMethod(): Promise<void> {
     return;
   }
 
-  const { sites, isNameShared } = await findCallSites(method);
+  const { sites, isNameShared } = await withProgress(`Looking for calls to ${method.name}()…`, () =>
+    findCallSites(method),
+  );
   const uncertain = sites.filter((site) => !site.isCertain);
 
   if (uncertain.length > 0 && isNameShared) {

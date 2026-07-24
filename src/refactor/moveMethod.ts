@@ -3,7 +3,7 @@ import { shortNameOf } from '../php/fqn';
 import type { MethodDeclaration } from '../php/members';
 import type { Declaration } from '../php/parser';
 import { getPhpIndex, indexedFile, type IndexedFile } from '../php/phpIndex';
-import { confirm } from './apply';
+import { confirm, withProgress } from './apply';
 import { findCallSites, methodAtCursor } from './callSites';
 import { memberIndent, memberInsertOffset } from './classEdits';
 import { EditSet } from './editSet';
@@ -81,7 +81,7 @@ export async function moveMethod(): Promise<void> {
   }
 
   const { method } = location;
-  const candidates = await destinations(source, method);
+  const candidates = await withProgress('Reading the classes of the project…', () => destinations(source, method));
   const picked = await vscode.window.showQuickPick(
     candidates.map((candidate) => ({
       label: `$(symbol-class) ${candidate.declaration.name}`,
@@ -122,7 +122,7 @@ export async function moveMethod(): Promise<void> {
     end: afterLine(source.text, method.end),
   };
   const code = source.text.slice(span.start, span.end);
-  const { sites } = await findCallSites(method);
+  const { sites } = await withProgress(`Moving ${method.name}()…`, () => findCallSites(method));
   const byFile = new Map<IndexedFile, EditSet>();
   const add = (file: IndexedFile, edit: { start: number; end: number; text: string }): void => {
     const edits = byFile.get(file) ?? new EditSet();

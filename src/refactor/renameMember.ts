@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { getPhpIndex, indexedFile, type IndexedFile } from '../php/phpIndex';
 import { shortNameOf } from '../php/fqn';
-import { askName, confirm } from './apply';
+import { askName, confirm, withProgress } from './apply';
 import { findMemberSites, methodAtCursor, receiverFqn, relatedMethods, type MemberRef } from './callSites';
 import { EditSet } from './editSet';
 
@@ -212,7 +212,7 @@ export async function renameMember(): Promise<void> {
     return;
   }
 
-  const rename = await buildMemberRename(target, newName);
+  const rename = await withProgress(`Renaming ${target.name}…`, () => buildMemberRename(target, newName));
 
   if (rename.uncertain > 0 && rename.isNameShared) {
     const isConfirmed = await confirm(

@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import type { MethodDeclaration } from './php/members';
 import type { Declaration } from './php/parser';
 import { getPhpIndex, indexedFile, type IndexedFile } from './php/phpIndex';
+import { withProgress } from './refactor/apply';
 import { methodAtCursor } from './refactor/callSites';
 
 interface Implementation {
@@ -79,7 +80,9 @@ export async function findImplementations(): Promise<void> {
     return;
   }
 
-  const implementations = await implementationsOf(location.method);
+  const implementations = await withProgress(`Looking for implementations of ${location.method.name}()…`, () =>
+    implementationsOf(location.method),
+  );
 
   if (implementations.length === 0) {
     vscode.window.showInformationMessage(`Nothing implements ${location.method.name}().`);

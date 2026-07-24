@@ -67,19 +67,42 @@ export async function confirm(question: string): Promise<boolean> {
 
 const IDENTIFIER = /^[A-Za-z_]\w*$/;
 
-/** Asks for a name, refusing anything PHP would not accept as an identifier. */
+/**
+ * Asks for a name, refusing anything PHP would not accept and anything already taken —
+ * finding out afterwards, once the edits are in, costs a lot more than a red outline.
+ */
 export async function askName(
   title: string,
   value: string,
   prompt?: string,
+  taken: string[] = [],
 ): Promise<string | null> {
+  const used = new Set(taken.map((name) => name.toLowerCase()));
   const answer = await vscode.window.showInputBox({
     title,
     value,
     prompt,
     valueSelection: [0, value.length],
-    validateInput: (candidate) => (IDENTIFIER.test(candidate.trim()) ? null : 'Invalid PHP identifier.'),
+    validateInput: (candidate) => {
+      const trimmed = candidate.trim();
+
+      if (!IDENTIFIER.test(trimmed)) {
+        return 'Invalid PHP identifier.';
+      }
+
+      return used.has(trimmed.toLowerCase()) ? `${trimmed} is already used here.` : null;
+    },
   });
 
   return answer === undefined ? null : answer.trim();
+}
+
+/**
+ * Runs a workspace-wide pass with something on screen.
+ *
+ * These searches read every PHP file of the project, which is a couple of seconds the
+ * first time; without a sign that it started, the command looks like it did nothing.
+ */
+export async function withProgress<T>(title: string, task: () => Promise<T>): Promise<T> {
+  return vscode.window.withProgress({ location: vscode.ProgressLocation.Window, title }, task);
 }

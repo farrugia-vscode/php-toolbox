@@ -99,7 +99,7 @@ describe('inlining a method', () => {
     );
 
     expect(inlineTarget(open, methodNamed(open, 'title'), false)).toEqual({
-      error: 'title() is public and could be overridden; inlining it is not safe.',
+      error: 'title() is public and could be overridden: make it private, or the class final, before inlining it.',
     });
   });
 

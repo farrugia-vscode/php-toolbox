@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import type { MethodDeclaration } from '../php/members';
 import type { Declaration } from '../php/parser';
 import { getPhpIndex, indexedFile, type IndexedFile } from '../php/phpIndex';
+import { withProgress } from './apply';
 import { classAt, memberIndent, memberInsertOffset } from './classEdits';
 import { EditSet } from './editSet';
 import { importEdit, typesUsedIn } from './imports';
@@ -102,7 +103,7 @@ export async function implementMissing(): Promise<void> {
     return;
   }
 
-  const missing = await missingMethods(declaration);
+  const missing = await withProgress('Reading the contracts of the class…', () => missingMethods(declaration));
 
   if (missing.length === 0) {
     vscode.window.showInformationMessage(`${declaration.name} implements everything it has to.`);

@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { indexedFile, type IndexedFile } from '../php/phpIndex';
 import { analyzeScopes, scopeAt } from '../php/scopes';
-import { activeTarget, askName, confirm } from './apply';
+import { activeTarget, askName, confirm, withProgress } from './apply';
 import { findCallSites, methodAtCursor, relatedMethods, type MethodLocation } from './callSites';
 import { EditSet } from './editSet';
 import { targetExpression } from './extractExpression';
@@ -51,7 +51,7 @@ async function applySignature(
 
   declarations.forEach((declaration) => edits.add(declaration.file, declarationEdit(declaration.method, specs)));
 
-  const { sites } = await findCallSites(method);
+  const { sites } = await withProgress(`Updating the calls to ${method.name}()…`, () => findCallSites(method));
   const refusals: string[] = [];
 
   sites.forEach((site) => {

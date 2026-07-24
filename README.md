@@ -56,6 +56,20 @@ They are in the command palette too, under **PHP:**.
 | Pull member up          | the cursor on a member                           | moves it to the parent class or to a trait, imports included                                   |
 | Push member down        | the cursor on a member                           | copies it into the classes that extend it, imports included                                    |
 | Extract interface       | the cursor on a class declaration                | publishes the public methods as an interface next to the class, and implements it              |
+| Rename member           | the cursor on a method, property or constant     | renames it everywhere, overrides and promoted constructor parameters included                  |
+| Move method             | the cursor on a method name                      | moves it to another class, routing the calls through a property or the class name              |
+| Safe delete             | the cursor on a member or a type                 | lists what still uses it before removing anything                                              |
+| Find implementations    | the cursor on an abstract or interface method    | lists the classes that answer the call, and jumps to one                                       |
+| Implement missing       | a class that implements or extends               | writes the methods the contracts ask for, signatures and imports copied                        |
+| Generate constructor    | the cursor on a class declaration                | takes the chosen properties as parameters and assigns them                                     |
+
+Smaller rewrites are offered the same way, and applied straight from the menu:
+
+- invert an `if`, merge it with the one nested inside it, or split a `&&` condition into two
+- turn a closure that only returns into an arrow function
+- turn a concatenation into an interpolated string
+- promote a constructor parameter to a property, dropping the declaration and the assignment
+- add `declare(strict_types=1)`
 
 The signature editor is one line, each parameter tagged with the slot it comes from:
 
@@ -74,8 +88,7 @@ listed for confirmation before anything is written.
 
 ## Limitations
 
-- Method and property renames are not supported yet; only types.
-- Inline method needs a body of one expression, or a call that is a statement of its own.
+- Inline method needs a body of one expression, a guard clause, or a call that is a statement of its own.
 - Extract method refuses a selection that jumps out of a loop or yields.
 - An import inside a `use A\{B, C};` group is left alone when the move takes the class out
   of the shared prefix. Those files are reported so they can be fixed by hand.
