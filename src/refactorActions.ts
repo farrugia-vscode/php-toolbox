@@ -63,6 +63,13 @@ function isInlinableVariable(scope: FunctionScope, offset: number): boolean {
   return scope.uses.filter((use) => use.name === target.name && use.isWrite).length === 1;
 }
 
+/** A method with no body of its own is answered somewhere else. */
+function isOnAbstractMethod(file: IndexedFile, offset: number): boolean {
+  return file.parsed.methods.some(
+    (method) => offset >= method.nameStart && offset <= method.nameEnd && method.isAbstract,
+  );
+}
+
 /** Whether the cursor is on the name of a method, either where it is declared or called. */
 function isOnMethodName(file: IndexedFile, offset: number): boolean {
   return (
@@ -134,7 +141,7 @@ function expressionActions(
  * PhpStorm opens on Alt+Enter: what you can do here, and nothing else.
  */
 export class RefactorCodeActionProvider implements vscode.CodeActionProvider {
-  public static readonly providedCodeActionKinds = [EXTRACT, INLINE, REWRITE, MOVE];
+  public static readonly providedCodeActionKinds = [vscode.CodeActionKind.Empty, EXTRACT, INLINE, REWRITE, MOVE];
 
   provideCodeActions(
     document: vscode.TextDocument,
@@ -170,6 +177,10 @@ export class RefactorCodeActionProvider implements vscode.CodeActionProvider {
 
     if (isOnMemberName(file, start)) {
       actions.push(action('Rename…', 'phpToolbox.renameMember', REWRITE));
+    }
+
+    if (isOnAbstractMethod(file, start)) {
+      actions.push(action('Find implementations', 'phpToolbox.findImplementations', vscode.CodeActionKind.Empty));
     }
 
     if (isOnMethodName(file, start)) {

@@ -123,6 +123,11 @@
         "command": "phpToolbox.safeDelete",
         "title": "Safe delete",
         "category": "PHP"
+      },
+      {
+        "command": "phpToolbox.findImplementations",
+        "title": "Find implementations",
+        "category": "PHP"
       }
     ],
     "menus": {
@@ -201,6 +206,10 @@
         },
         {
           "command": "phpToolbox.safeDelete",
+          "when": "editorLangId == php"
+        },
+        {
+          "command": "phpToolbox.findImplementations",
           "when": "editorLangId == php"
         }
       ]

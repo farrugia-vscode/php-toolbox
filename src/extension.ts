@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { KIND_ICON, findClassLikeSymbols, pickEnclosingClass } from './classSymbols';
 import { UsagesCodeActionProvider } from './codeActions';
+import { findImplementations } from './findImplementations';
 import { showUsages } from './findUsages';
 import { InheritanceResolver } from './inheritanceResolver';
 import { forgetPsr4Roots } from './php/psr4';
@@ -119,6 +120,7 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     vscode.commands.registerCommand('phpToolbox.inheritedSymbols', show),
     vscode.commands.registerCommand('phpToolbox.findUsages', showUsages),
+    vscode.commands.registerCommand('phpToolbox.findImplementations', findImplementations),
     vscode.commands.registerCommand('phpToolbox.moveClass', moveClass),
     vscode.commands.registerCommand('phpToolbox.renameType', renameType),
     vscode.commands.registerCommand('phpToolbox.showActions', showRefactorings),
