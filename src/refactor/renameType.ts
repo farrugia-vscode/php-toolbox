@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { getPhpIndex, type IndexedFile } from '../php/phpIndex';
 import { directoryForNamespace } from '../php/psr4';
+import { namespaceOf, shortNameOf } from '../php/fqn';
 import { stringLiteralEdits } from './stringLiterals';
 import { EditSet, type TextEdit } from './editSet';
 
@@ -11,13 +12,7 @@ export interface TypeRename {
   referenceCount: number;
 }
 
-export function shortNameOf(fqn: string): string {
-  return fqn.split('\\').pop() ?? fqn;
-}
-
-export function namespaceOf(fqn: string): string {
-  return fqn.split('\\').slice(0, -1).join('\\');
-}
+export { namespaceOf, shortNameOf } from '../php/fqn';
 
 /** Rewrites only the trailing segment, leaving whatever prefix was written untouched. */
 function replaceLastSegment(written: string, shortNew: string): string {

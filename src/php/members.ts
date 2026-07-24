@@ -1,0 +1,262 @@
+/**
+ * The members and calls a PHP file contains, built from the parser AST.
+ *
+ * Kept apart from `parser.ts` so the walk there stays about names, while everything a
+ * refactoring needs to know about a method — its signature, its body, who calls it —
+ * lives in one place.
+ */
+
+export type Visibility = 'public' | 'protected' | 'private';
+
+export interface ParamInfo {
+  /** Variable name, without the leading `$`. */
+  name: string;
+  type: string | null;
+  defaultText: string | null;
+  isVariadic: boolean;
+  isByRef: boolean;
+  /** Constructor promotion: the parameter also declares a property. */
+  isPromoted: boolean;
+  /** Offsets of the whole parameter, modifiers and default included. */
+  start: number;
+  end: number;
+}
+
+export interface MethodDeclaration {
+  name: string;
+  /** Fully qualified name of the declaring type, empty for a plain function. */
+  className: string;
+  visibility: Visibility;
+  isStatic: boolean;
+  isAbstract: boolean;
+  params: ParamInfo[];
+  returnType: string | null;
+  nameStart: number;
+  nameEnd: number;
+  /** Offsets of the whole declaration, from the first modifier to the closing brace. */
+  start: number;
+  end: number;
+  /** Offsets just inside the braces, null for an abstract or interface method. */
+  bodyStart: number | null;
+  bodyEnd: number | null;
+  /** Offsets just inside the parentheses of the parameter list. */
+  paramsStart: number;
+  paramsEnd: number;
+}
+
+export interface PropertyDeclaration {
+  name: string;
+  className: string;
+  visibility: Visibility;
+  isStatic: boolean;
+  type: string | null;
+  start: number;
+  end: number;
+}
+
+export interface ClassConstant {
+  name: string;
+  className: string;
+  visibility: Visibility;
+  start: number;
+  end: number;
+}
+
+/** How the receiver of a call was written, which is what tells us how sure we can be. */
+export type ReceiverKind = 'this' | 'self' | 'static' | 'parent' | 'type' | 'expression';
+
+export interface CallArgument {
+  /** Argument label of a named argument (`limit: 10`), null for a positional one. */
+  label: string | null;
+  start: number;
+  end: number;
+}
+
+export interface MethodCall {
+  name: string;
+  receiverKind: ReceiverKind;
+  receiverText: string;
+  isStatic: boolean;
+  /** Type the call is written on for a static call, as written. */
+  receiverType: string | null;
+  nameStart: number;
+  nameEnd: number;
+  start: number;
+  end: number;
+  /** Offsets just inside the parentheses. */
+  argsStart: number;
+  argsEnd: number;
+  args: CallArgument[];
+  /** Set when an argument is spread (`...$args`), which no rewrite can map back. */
+  hasSpread: boolean;
+}
+
+function visibilityOf(node: any): Visibility {
+  const visibility = node.visibility;
+
+  return visibility === 'protected' || visibility === 'private' ? visibility : 'public';
+}
+
+/** Types are taken from the source rather than rebuilt: unions and intersections come free. */
+export function typeText(node: any, text: string, isNullable = false): string | null {
+  if (!node?.loc) {
+    return null;
+  }
+
+  const written = text.slice(node.loc.start.offset, node.loc.end.offset).trim();
+
+  if (!written) {
+    return null;
+  }
+
+  return isNullable && !written.startsWith('?') && !written.includes('|') ? `?${written}` : written;
+}
+
+export function paramFrom(node: any, text: string): ParamInfo {
+  return {
+    name: typeof node.name === 'string' ? node.name : node.name?.name ?? '',
+    type: typeText(node.type, text, node.nullable === true),
+    defaultText: node.value ? text.slice(node.value.loc.start.offset, node.value.loc.end.offset) : null,
+    isVariadic: node.variadic === true,
+    isByRef: node.byref === true,
+    isPromoted: Boolean(node.flags) || Boolean(node.visibility) || node.readonly === true,
+    start: node.loc.start.offset,
+    end: node.loc.end.offset,
+  };
+}
+
+/** Offsets inside the parentheses that follow `from`, or a collapsed pair when there are none. */
+function parenthesesAfter(text: string, from: number, end: number): [number, number] {
+  const open = text.indexOf('(', from);
+
+  if (open === -1 || open > end) {
+    return [from, from];
+  }
+
+  let depth = 0;
+
+  for (let offset = open; offset <= end && offset < text.length; offset++) {
+    const character = text[offset];
+
+    if (character === '(') {
+      depth++;
+    } else if (character === ')') {
+      depth--;
+
+      if (depth === 0) {
+        return [open + 1, offset];
+      }
+    }
+  }
+
+  return [open + 1, open + 1];
+}
+
+export function methodFrom(node: any, text: string, className: string): MethodDeclaration {
+  const nameStart = node.name.loc.start.offset;
+  const nameEnd = node.name.loc.end.offset;
+  const end = node.loc.end.offset;
+  const [paramsStart, paramsEnd] = parenthesesAfter(text, nameEnd, end);
+
+  return {
+    name: node.name.name,
+    className,
+    visibility: visibilityOf(node),
+    isStatic: node.isStatic === true,
+    isAbstract: node.isAbstract === true || node.body === null,
+    params: (node.arguments ?? []).map((argument: any) => paramFrom(argument, text)),
+    returnType: typeText(node.type, text, node.nullable === true),
+    nameStart,
+    nameEnd,
+    start: node.loc.start.offset,
+    end,
+    bodyStart: node.body?.loc ? node.body.loc.start.offset + 1 : null,
+    bodyEnd: node.body?.loc ? node.body.loc.end.offset - 1 : null,
+    paramsStart,
+    paramsEnd,
+  };
+}
+
+/** `$this`, `self`, a type name or anything else: the receiver decides how safe a rewrite is. */
+function receiverOf(node: any, text: string): Pick<MethodCall, 'receiverKind' | 'receiverText' | 'receiverType'> {
+  const written = node?.loc ? text.slice(node.loc.start.offset, node.loc.end.offset) : '';
+  const bare = written.replace(/^\\/, '');
+
+  if (node?.kind === 'variable' && node.name === 'this') {
+    return { receiverKind: 'this', receiverText: '$this', receiverType: null };
+  }
+
+  if (node?.kind === 'name' || node?.kind === 'classreference' || node?.kind === 'identifier') {
+    const lowered = bare.toLowerCase();
+
+    if (lowered === 'self' || lowered === 'static' || lowered === 'parent') {
+      return { receiverKind: lowered as ReceiverKind, receiverText: bare, receiverType: null };
+    }
+
+    return { receiverKind: 'type', receiverText: bare, receiverType: bare };
+  }
+
+  return { receiverKind: 'expression', receiverText: written, receiverType: null };
+}
+
+/** A method call, or null when the node is a call to something that is not a method. */
+export function callFrom(node: any, text: string): MethodCall | null {
+  const target = node.what;
+
+  if (target?.kind !== 'propertylookup' && target?.kind !== 'staticlookup' && target?.kind !== 'nullsafepropertylookup') {
+    return null;
+  }
+
+  const offset = target.offset;
+
+  // `$object->$name()` names the method at runtime: nothing to match on.
+  if (offset?.kind !== 'identifier' && offset?.kind !== 'name') {
+    return null;
+  }
+
+  const nameStart = offset.loc.start.offset;
+  const nameEnd = offset.loc.end.offset;
+  const end = node.loc.end.offset;
+  const [argsStart, argsEnd] = parenthesesAfter(text, nameEnd, end);
+  const args: CallArgument[] = (node.arguments ?? []).map((argument: any) => ({
+    label: argument.kind === 'namedargument' ? argument.name : null,
+    start: argument.loc.start.offset,
+    end: argument.loc.end.offset,
+  }));
+
+  return {
+    name: offset.name,
+    isStatic: target.kind === 'staticlookup',
+    ...receiverOf(target.what, text),
+    nameStart,
+    nameEnd,
+    start: node.loc.start.offset,
+    end,
+    argsStart,
+    argsEnd,
+    args,
+    hasSpread: (node.arguments ?? []).some((argument: any) => argument.kind === 'variadicplaceholder' || argument.byref === true || argument.unpack === true),
+  };
+}
+
+export function propertyFrom(node: any, text: string, className: string, group: any): PropertyDeclaration {
+  return {
+    name: typeof node.name === 'string' ? node.name : node.name?.name ?? '',
+    className,
+    visibility: visibilityOf(group),
+    isStatic: group.isStatic === true,
+    type: typeText(node.type, text, node.nullable === true),
+    start: group.loc.start.offset,
+    end: group.loc.end.offset,
+  };
+}
+
+export function constantFrom(node: any, className: string, group: any): ClassConstant {
+  return {
+    name: typeof node.name === 'string' ? node.name : node.name?.name ?? '',
+    className,
+    visibility: visibilityOf(group),
+    start: group.loc.start.offset,
+    end: group.loc.end.offset,
+  };
+}

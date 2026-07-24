@@ -1,4 +1,17 @@
-import { Engine } from 'php-parser';
+import { parseAst } from './engine';
+import { collectImports, resolve, trimLeadingSeparator, type Import } from './names';
+import {
+  callFrom,
+  constantFrom,
+  methodFrom,
+  propertyFrom,
+  type ClassConstant,
+  type MethodCall,
+  type MethodDeclaration,
+  type PropertyDeclaration,
+} from './members';
+
+export type { Import } from './names';
 
 export type DeclarationKind = 'class' | 'interface' | 'trait' | 'enum';
 
@@ -9,16 +22,14 @@ export interface Declaration {
   fqn: string;
   start: number;
   end: number;
-}
-
-/** A `use X\Y;` import, with the offsets of the written name. */
-export interface Import {
-  fqn: string;
-  alias: string;
-  /** Shared prefix when the import sits in a `use A\{B, C};` group, empty otherwise. */
-  groupPrefix: string;
-  start: number;
-  end: number;
+  /** Offsets just inside the braces of the class body. */
+  bodyStart: number;
+  bodyEnd: number;
+  isAbstract: boolean;
+  /** Fully qualified parent, interfaces and traits, for the refactorings that walk a hierarchy. */
+  parent: string | null;
+  interfaces: string[];
+  traits: string[];
 }
 
 /** How a name was written: fully qualified, qualified, relative or bare. */
@@ -41,93 +52,15 @@ export interface ParsedFile {
   imports: Import[];
   declarations: Declaration[];
   references: Reference[];
+  methods: MethodDeclaration[];
+  properties: PropertyDeclaration[];
+  constants: ClassConstant[];
+  calls: MethodCall[];
 }
 
 const DECLARATION_KINDS = new Set(['class', 'interface', 'trait', 'enum']);
 
-/** Names the parser reports like any other, but which never point at a type. */
-const RESERVED = new Set([
-  'self', 'static', 'parent', 'int', 'float', 'string', 'bool', 'boolean', 'array',
-  'callable', 'iterable', 'object', 'mixed', 'void', 'never', 'null', 'false', 'true',
-]);
-
-const engine = new Engine({
-  parser: { extractDoc: false, suppressErrors: true, php7: true },
-  ast: { withPositions: true },
-});
-
-function trimLeadingSeparator(name: string): string {
-  return name.startsWith('\\') ? name.slice(1) : name;
-}
-
-/**
- * Turns a name as written into a fully qualified one, applying the same rules PHP does:
- * imports first, then the current namespace.
- */
-function resolve(
-  written: string,
-  resolution: string,
-  namespace: string,
-  aliases: Map<string, string>,
-): string | null {
-  const name = trimLeadingSeparator(written);
-
-  if (resolution === 'fqn') {
-    return name;
-  }
-
-  const segments = name.split('\\');
-
-  if (segments.length === 1 && RESERVED.has(name.toLowerCase())) {
-    return null;
-  }
-
-  if (resolution === 'rn') {
-    return namespace ? `${namespace}\\${name}` : name;
-  }
-
-  const imported = aliases.get(segments[0].toLowerCase());
-
-  if (imported) {
-    return [imported, ...segments.slice(1)].join('\\');
-  }
-
-  return namespace ? `${namespace}\\${name}` : name;
-}
-
-/** Offsets of `written` inside a node whose location may also cover an `as` alias. */
-function writtenRange(text: string, start: number, written: string): [number, number] {
-  if (text.startsWith(written, start)) {
-    return [start, start + written.length];
-  }
-
-  const found = text.indexOf(written, start);
-  return found === -1 ? [start, start + written.length] : [found, found + written.length];
-}
-
-function collectImports(node: any, text: string, imports: Import[], aliases: Map<string, string>): void {
-  // A grouped import (`use A\{B, C};`) carries the shared prefix on the group itself.
-  const prefix = typeof node.name === 'string' ? trimLeadingSeparator(node.name) : '';
-
-  for (const item of node.items ?? []) {
-    const type = item.type ?? node.type;
-
-    // `use function` / `use const` do not import types.
-    if (type) {
-      continue;
-    }
-
-    const written = trimLeadingSeparator(item.name);
-    const fqn = prefix ? `${prefix}\\${written}` : written;
-    const alias = item.alias?.name ?? (written.split('\\').pop() ?? written);
-    const [start, end] = writtenRange(text, item.loc.start.offset, written);
-
-    imports.push({ fqn, alias, groupPrefix: prefix, start, end });
-    aliases.set(alias.toLowerCase(), fqn);
-  }
-}
-
-/** Everything a rename needs to know about one file: what it declares and what it names. */
+/** Everything a refactoring needs to know about one file: what it declares, names and calls. */
 export function parseFile(text: string): ParsedFile {
   const parsed: ParsedFile = {
     namespace: '',
@@ -136,24 +69,57 @@ export function parseFile(text: string): ParsedFile {
     imports: [],
     declarations: [],
     references: [],
+    methods: [],
+    properties: [],
+    constants: [],
+    calls: [],
   };
   const aliases = new Map<string, string>();
 
-  let ast;
-  try {
-    ast = engine.parseCode(text, 'file.php');
-  } catch {
+  const ast = parseAst(text);
+
+  if (!ast) {
     return parsed;
   }
 
-  const walk = (node: any): void => {
+  const fqnOf = (node: any): string | null => {
+    if (!node) {
+      return null;
+    }
+
+    const written = typeof node.name === 'string' ? node.name : node.name?.name ?? '';
+    return resolve(written, node.resolution ?? 'uqn', parsed.namespace, aliases);
+  };
+
+  const declare = (node: any): Declaration => {
+    const name = node.name.name;
+    const bodyStart = text.indexOf('{', node.name.loc.end.offset);
+
+    return {
+      kind: node.kind as DeclarationKind,
+      name,
+      fqn: parsed.namespace ? `${parsed.namespace}\\${name}` : name,
+      start: node.name.loc.start.offset,
+      end: node.name.loc.end.offset,
+      bodyStart: bodyStart === -1 ? node.loc.end.offset : bodyStart + 1,
+      bodyEnd: node.loc.end.offset - 1,
+      isAbstract: node.isAbstract === true,
+      parent: fqnOf(node.extends),
+      interfaces: (node.implements ?? []).map(fqnOf).filter(Boolean) as string[],
+      traits: [],
+    };
+  };
+
+  const walk = (node: any, className: string): void => {
     if (!node || typeof node !== 'object') {
       return;
     }
     if (Array.isArray(node)) {
-      node.forEach(walk);
+      node.forEach((item) => walk(item, className));
       return;
     }
+
+    let scope = className;
 
     if (node.kind === 'namespace' && typeof node.name === 'string' && !parsed.namespace) {
       parsed.namespace = node.name;
@@ -166,14 +132,32 @@ export function parseFile(text: string): ParsedFile {
     } else if (node.kind === 'usegroup') {
       collectImports(node, text, parsed.imports, aliases);
     } else if (DECLARATION_KINDS.has(node.kind) && node.name?.kind === 'identifier') {
-      const name = node.name.name;
-      parsed.declarations.push({
-        kind: node.kind as DeclarationKind,
-        name,
-        fqn: parsed.namespace ? `${parsed.namespace}\\${name}` : name,
-        start: node.name.loc.start.offset,
-        end: node.name.loc.end.offset,
+      const declaration = declare(node);
+      parsed.declarations.push(declaration);
+      scope = declaration.fqn;
+    } else if (node.kind === 'usetrait') {
+      const owner = parsed.declarations.find((candidate) => candidate.fqn === className);
+      (node.traits ?? []).forEach((trait: any) => {
+        const fqn = fqnOf(trait);
+        if (fqn && owner) {
+          owner.traits.push(fqn);
+        }
       });
+    } else if (node.kind === 'method' && node.name?.loc) {
+      parsed.methods.push(methodFrom(node, text, className));
+    } else if (node.kind === 'propertystatement') {
+      (node.properties ?? []).forEach((property: any) =>
+        parsed.properties.push(propertyFrom(property, text, className, node)),
+      );
+    } else if (node.kind === 'classconstant') {
+      (node.constants ?? []).forEach((constant: any) =>
+        parsed.constants.push(constantFrom(constant, className, node)),
+      );
+    } else if (node.kind === 'call') {
+      const call = callFrom(node, text);
+      if (call) {
+        parsed.calls.push(call);
+      }
     } else if (node.kind === 'name') {
       const fqn = resolve(node.name, node.resolution, parsed.namespace, aliases);
       if (fqn) {
@@ -188,12 +172,12 @@ export function parseFile(text: string): ParsedFile {
 
     for (const key of Object.keys(node)) {
       if (key !== 'loc') {
-        walk(node[key]);
+        walk(node[key], scope);
       }
     }
   };
 
-  walk(ast);
+  walk(ast, '');
 
   // New imports go after the existing ones, or right under the namespace line.
   if (parsed.imports.length > 0) {
@@ -202,3 +186,5 @@ export function parseFile(text: string): ParsedFile {
 
   return parsed;
 }
+
+export { trimLeadingSeparator };
