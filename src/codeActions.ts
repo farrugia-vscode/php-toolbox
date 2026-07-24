@@ -59,6 +59,7 @@ export class UsagesCodeActionProvider implements vscode.CodeActionProvider {
       action(usages, 'phpToolbox.findUsages'),
       action('Rename…', 'phpToolbox.renameType', vscode.CodeActionKind.RefactorRewrite),
       action('Move class…', 'phpToolbox.moveClass', vscode.CodeActionKind.RefactorMove),
+      action('Safe delete', 'phpToolbox.safeDelete', vscode.CodeActionKind.RefactorRewrite),
     ];
 
     if (/\bclass\s+\w/.test(line) && !/\babstract\b/.test(line)) {

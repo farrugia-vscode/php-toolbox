@@ -12,6 +12,7 @@ import { moveClass, registerFileMoveSync } from './refactor/moveNamespace';
 import { pullMemberUp, pushMemberDown } from './refactor/moveMembers';
 import { PhpRenameProvider, renameType } from './refactor/renameProvider';
 import { renameMember } from './refactor/renameMember';
+import { safeDelete } from './refactor/safeDelete';
 import { changeSignature, introduceParameter } from './refactor/signatureCommands';
 import { RefactorCodeActionProvider, showRefactorings } from './refactorActions';
 import type { Member } from './types';
@@ -122,6 +123,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('phpToolbox.renameType', renameType),
     vscode.commands.registerCommand('phpToolbox.showActions', showRefactorings),
     vscode.commands.registerCommand('phpToolbox.renameMember', renameMember),
+    vscode.commands.registerCommand('phpToolbox.safeDelete', safeDelete),
     vscode.commands.registerCommand('phpToolbox.extractMethod', extractMethod),
     vscode.commands.registerCommand('phpToolbox.extractVariable', (options?: { isReplacingAll?: boolean }) =>
       extractExpression('variable', options?.isReplacingAll ?? false),

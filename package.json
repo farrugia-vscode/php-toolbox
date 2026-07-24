@@ -118,6 +118,11 @@
         "command": "phpToolbox.generateConstructor",
         "title": "Generate constructor…",
         "category": "PHP"
+      },
+      {
+        "command": "phpToolbox.safeDelete",
+        "title": "Safe delete",
+        "category": "PHP"
       }
     ],
     "menus": {
@@ -192,6 +197,10 @@
         },
         {
           "command": "phpToolbox.generateConstructor",
+          "when": "editorLangId == php"
+        },
+        {
+          "command": "phpToolbox.safeDelete",
           "when": "editorLangId == php"
         }
       ]

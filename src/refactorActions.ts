@@ -174,6 +174,13 @@ export class RefactorCodeActionProvider implements vscode.CodeActionProvider {
 
     if (isOnMethodName(file, start)) {
       actions.push(action('Inline method', 'phpToolbox.inlineMethod', INLINE));
+    }
+
+    if (isOnMember(file, start)) {
+      actions.push(action('Safe delete', 'phpToolbox.safeDelete', REWRITE));
+    }
+
+    if (isOnMethodName(file, start)) {
       actions.push(action('Change signature…', 'phpToolbox.changeSignature', REWRITE));
     }
 
