@@ -102,4 +102,10 @@ export class CodeAction {
   ) {}
 }
 
-export const CodeActionKind = { Empty: 'empty' };
+export const CodeActionKind = {
+  Empty: 'empty',
+  RefactorExtract: 'refactor.extract',
+  RefactorInline: 'refactor.inline',
+  RefactorRewrite: 'refactor.rewrite',
+  RefactorMove: 'refactor.move',
+};

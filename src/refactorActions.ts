@@ -4,8 +4,37 @@ import { indexedFile, type IndexedFile } from './php/phpIndex';
 import { scopeAt, type FileScopes, type FunctionScope } from './php/scopes';
 import { sameOccurrences, targetExpression } from './refactor/extractExpression';
 
-function action(title: string, command: string, args: unknown[] = []): vscode.CodeAction {
-  const created = new vscode.CodeAction(title, vscode.CodeActionKind.Empty);
+/**
+ * Opens the whole code action menu, groups and all.
+ *
+ * `quickFix` alone hides anything typed as a refactoring, and the refactor menu hides the
+ * quick fixes; an empty kind matches every group, which is the menu Alt+Enter is expected
+ * to open.
+ */
+export async function showRefactorings(): Promise<void> {
+  try {
+    await vscode.commands.executeCommand('editor.action.codeAction', { kind: '', apply: 'never' });
+  } catch {
+    await vscode.commands.executeCommand('editor.action.quickFix');
+  }
+}
+
+const EXTRACT = vscode.CodeActionKind.RefactorExtract;
+const INLINE = vscode.CodeActionKind.RefactorInline;
+const REWRITE = vscode.CodeActionKind.RefactorRewrite;
+const MOVE = vscode.CodeActionKind.RefactorMove;
+
+/**
+ * The kind decides the group the action shows up under — Extract, Inline, Rewrite, Move —
+ * which is what turns a flat list of a dozen entries into a menu you can read.
+ */
+function action(
+  title: string,
+  command: string,
+  kind: vscode.CodeActionKind,
+  args: unknown[] = [],
+): vscode.CodeAction {
+  const created = new vscode.CodeAction(title, kind);
   created.command = { command, title, arguments: args };
 
   return created;
@@ -59,7 +88,7 @@ function expressionActions(
     return [];
   }
 
-  const actions = [action('Extract variable…', 'phpToolbox.extractVariable')];
+  const actions = [action('Extract variable…', 'phpToolbox.extractVariable', EXTRACT)];
   const occurrences = sameOccurrences(text, scopes.expressions, expression, {
     start: scope.bodyStart,
     end: scope.bodyEnd,
@@ -67,7 +96,7 @@ function expressionActions(
 
   if (occurrences.length > 1) {
     actions.push(
-      action(`Extract variable (${occurrences.length} occurrences)…`, 'phpToolbox.extractVariable', [
+      action(`Extract variable (${occurrences.length} occurrences)…`, 'phpToolbox.extractVariable', EXTRACT, [
         { isReplacingAll: true },
       ]),
     );
@@ -78,11 +107,11 @@ function expressionActions(
   }
 
   if (expression.isConstant) {
-    actions.push(action('Extract constant…', 'phpToolbox.extractConstant', [{ isReplacingAll: true }]));
-    actions.push(action('Introduce parameter…', 'phpToolbox.introduceParameter'));
+    actions.push(action('Extract constant…', 'phpToolbox.extractConstant', EXTRACT, [{ isReplacingAll: true }]));
+    actions.push(action('Introduce parameter…', 'phpToolbox.introduceParameter', REWRITE));
   }
 
-  actions.push(action('Extract property…', 'phpToolbox.extractProperty'));
+  actions.push(action('Extract property…', 'phpToolbox.extractProperty', EXTRACT));
 
   return actions;
 }
@@ -92,7 +121,7 @@ function expressionActions(
  * PhpStorm opens on Alt+Enter: what you can do here, and nothing else.
  */
 export class RefactorCodeActionProvider implements vscode.CodeActionProvider {
-  public static readonly providedCodeActionKinds = [vscode.CodeActionKind.Empty];
+  public static readonly providedCodeActionKinds = [EXTRACT, INLINE, REWRITE, MOVE];
 
   provideCodeActions(
     document: vscode.TextDocument,
@@ -106,7 +135,7 @@ export class RefactorCodeActionProvider implements vscode.CodeActionProvider {
     const actions: vscode.CodeAction[] = [];
 
     if (scope && scope.kind === 'method' && end > start && hasStatements(scope, start, end)) {
-      actions.push(action('Extract method…', 'phpToolbox.extractMethod'));
+      actions.push(action('Extract method…', 'phpToolbox.extractMethod', EXTRACT));
     }
 
     if (scope) {
@@ -114,19 +143,19 @@ export class RefactorCodeActionProvider implements vscode.CodeActionProvider {
     }
 
     if (scope && start === end && isInlinableVariable(scope, start)) {
-      actions.push(action('Inline variable', 'phpToolbox.inlineVariable'));
+      actions.push(action('Inline variable', 'phpToolbox.inlineVariable', INLINE));
     }
 
     const file = indexedFile(document.uri, text);
 
     if (isOnMethodName(file, start)) {
-      actions.push(action('Inline method', 'phpToolbox.inlineMethod'));
-      actions.push(action('Change signature…', 'phpToolbox.changeSignature'));
+      actions.push(action('Inline method', 'phpToolbox.inlineMethod', INLINE));
+      actions.push(action('Change signature…', 'phpToolbox.changeSignature', REWRITE));
     }
 
     if (isOnMember(file, start)) {
-      actions.push(action('Pull member up…', 'phpToolbox.pullMemberUp'));
-      actions.push(action('Push member down…', 'phpToolbox.pushMemberDown'));
+      actions.push(action('Pull member up…', 'phpToolbox.pullMemberUp', MOVE));
+      actions.push(action('Push member down…', 'phpToolbox.pushMemberDown', MOVE));
     }
 
     return actions;

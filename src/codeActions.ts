@@ -22,8 +22,8 @@ function usagesTitle(line: string): string | null {
   return 'Find usages';
 }
 
-function action(title: string, command: string): vscode.CodeAction {
-  const created = new vscode.CodeAction(title, vscode.CodeActionKind.Empty);
+function action(title: string, command: string, kind = vscode.CodeActionKind.Empty): vscode.CodeAction {
+  const created = new vscode.CodeAction(title, kind);
   created.command = { command, title };
 
   return created;
@@ -34,7 +34,12 @@ function action(title: string, command: string): vscode.CodeAction {
  * the shortcut people already press, without stealing a binding of their own.
  */
 export class UsagesCodeActionProvider implements vscode.CodeActionProvider {
-  public static readonly providedCodeActionKinds = [vscode.CodeActionKind.Empty];
+  public static readonly providedCodeActionKinds = [
+    vscode.CodeActionKind.Empty,
+    vscode.CodeActionKind.RefactorExtract,
+    vscode.CodeActionKind.RefactorRewrite,
+    vscode.CodeActionKind.RefactorMove,
+  ];
 
   provideCodeActions(
     document: vscode.TextDocument,
@@ -51,12 +56,12 @@ export class UsagesCodeActionProvider implements vscode.CodeActionProvider {
     const line = document.lineAt(range.start.line).text;
     const actions = [
       action(usages, 'phpToolbox.findUsages'),
-      action('Rename…', 'phpToolbox.renameType'),
-      action('Move class…', 'phpToolbox.moveClass'),
+      action('Rename…', 'phpToolbox.renameType', vscode.CodeActionKind.RefactorRewrite),
+      action('Move class…', 'phpToolbox.moveClass', vscode.CodeActionKind.RefactorMove),
     ];
 
     if (/\bclass\s+\w/.test(line) && !/\babstract\b/.test(line)) {
-      actions.push(action('Extract interface…', 'phpToolbox.extractInterface'));
+      actions.push(action('Extract interface…', 'phpToolbox.extractInterface', vscode.CodeActionKind.RefactorExtract));
     }
 
     return actions;

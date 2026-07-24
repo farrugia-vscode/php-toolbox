@@ -98,6 +98,11 @@
         "command": "phpToolbox.pushMemberDown",
         "title": "Push member down…",
         "category": "PHP"
+      },
+      {
+        "command": "phpToolbox.showActions",
+        "title": "Show refactorings…",
+        "category": "PHP"
       }
     ],
     "menus": {
@@ -176,9 +181,9 @@
         "when": "editorLangId == php && editorTextFocus"
       },
       {
-        "command": "editor.action.quickFix",
+        "command": "phpToolbox.showActions",
         "key": "alt+enter",
-        "when": "editorLangId == php && editorHasCodeActionsProvider && editorTextFocus && !editorReadonly && !suggestWidgetVisible"
+        "when": "editorLangId == php && editorTextFocus && !editorReadonly && !suggestWidgetVisible"
       }
     ]
   },
