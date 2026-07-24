@@ -128,6 +128,11 @@
         "command": "phpToolbox.findImplementations",
         "title": "Find implementations",
         "category": "PHP"
+      },
+      {
+        "command": "phpToolbox.moveMethod",
+        "title": "Move method to another class…",
+        "category": "PHP"
       }
     ],
     "menus": {
@@ -210,6 +215,10 @@
         },
         {
           "command": "phpToolbox.findImplementations",
+          "when": "editorLangId == php"
+        },
+        {
+          "command": "phpToolbox.moveMethod",
           "when": "editorLangId == php"
         }
       ]

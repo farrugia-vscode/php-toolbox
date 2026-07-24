@@ -195,6 +195,10 @@ export class RefactorCodeActionProvider implements vscode.CodeActionProvider {
       actions.push(action('Change signature…', 'phpToolbox.changeSignature', REWRITE));
     }
 
+    if (isOnMethodName(file, start)) {
+      actions.push(action('Move method to another class…', 'phpToolbox.moveMethod', MOVE));
+    }
+
     if (isOnMember(file, start)) {
       actions.push(action('Pull member up…', 'phpToolbox.pullMemberUp', MOVE));
       actions.push(action('Push member down…', 'phpToolbox.pushMemberDown', MOVE));

@@ -9,6 +9,7 @@ import { extractExpression, extractMethod } from './refactor/extractCommands';
 import { extractInterface } from './refactor/extractInterface';
 import { generateConstructor, implementMissing } from './refactor/generate';
 import { inlineMethod, inlineVariable } from './refactor/inlineCommands';
+import { moveMethod } from './refactor/moveMethod';
 import { moveClass, registerFileMoveSync } from './refactor/moveNamespace';
 import { pullMemberUp, pushMemberDown } from './refactor/moveMembers';
 import { PhpRenameProvider, renameType } from './refactor/renameProvider';
@@ -141,6 +142,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('phpToolbox.extractInterface', extractInterface),
     vscode.commands.registerCommand('phpToolbox.implementMissing', implementMissing),
     vscode.commands.registerCommand('phpToolbox.generateConstructor', generateConstructor),
+    vscode.commands.registerCommand('phpToolbox.moveMethod', moveMethod),
     vscode.commands.registerCommand('phpToolbox.pullMemberUp', pullMemberUp),
     vscode.commands.registerCommand('phpToolbox.pushMemberDown', pushMemberDown),
     vscode.languages.registerRenameProvider({ scheme: 'file', language: 'php' }, new PhpRenameProvider()),
