@@ -106,3 +106,34 @@ describe('rewriting expressions', () => {
     expect(titles('<?php\n\nnamespace App;\n', '<?php')).toContain('Add declare(strict_types=1)');
   });
 });
+
+const SERVICE = `<?php
+
+declare(strict_types=1);
+
+namespace App;
+
+final class Service
+{
+    private LoggerInterface $logger;
+
+    public function __construct(LoggerInterface $logger, private int $retries)
+    {
+        $this->logger = $logger;
+    }
+}
+`;
+
+describe('promoting a constructor parameter', () => {
+  test('drops the property and the assignment it replaces', () => {
+    const result = apply(SERVICE, 'LoggerInterface $logger,', 'Promote $logger to a property');
+
+    expect(result).toContain('public function __construct(private LoggerInterface $logger, private int $retries)');
+    expect(result).not.toContain('private LoggerInterface $logger;');
+    expect(result).not.toContain('$this->logger = $logger;');
+  });
+
+  test('is not offered on a parameter that is already promoted', () => {
+    expect(titles(SERVICE, 'private int $retries')).not.toContain('Promote $retries to a property');
+  });
+});

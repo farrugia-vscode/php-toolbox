@@ -2,6 +2,7 @@ import { nodeChain } from '../php/nodeIndex';
 import type { TextEdit } from '../refactor/editSet';
 import { indentAt, indentUnit } from '../refactor/textLayout';
 import { negate } from './negation';
+import { promoteParameter } from './promoteParameter';
 
 /** A small, local rewrite offered where the cursor already is. */
 export interface Intention {
@@ -204,6 +205,7 @@ const FINDERS: Finder[] = [
   closureToArrow,
   concatToInterpolation,
   addStrictTypes,
+  (text, _chain, offset) => promoteParameter(text, offset),
 ];
 
 /**

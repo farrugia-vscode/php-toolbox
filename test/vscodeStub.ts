@@ -104,6 +104,7 @@ export class CodeAction {
 
 export const CodeActionKind = {
   Empty: 'empty',
+  Refactor: 'refactor',
   RefactorExtract: 'refactor.extract',
   RefactorInline: 'refactor.inline',
   RefactorRewrite: 'refactor.rewrite',

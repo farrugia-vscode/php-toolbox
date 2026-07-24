@@ -108,6 +108,16 @@
         "command": "phpToolbox.renameMember",
         "title": "Rename method, property or constant…",
         "category": "PHP"
+      },
+      {
+        "command": "phpToolbox.implementMissing",
+        "title": "Implement missing methods…",
+        "category": "PHP"
+      },
+      {
+        "command": "phpToolbox.generateConstructor",
+        "title": "Generate constructor…",
+        "category": "PHP"
       }
     ],
     "menus": {
@@ -174,6 +184,14 @@
         },
         {
           "command": "phpToolbox.renameMember",
+          "when": "editorLangId == php"
+        },
+        {
+          "command": "phpToolbox.implementMissing",
+          "when": "editorLangId == php"
+        },
+        {
+          "command": "phpToolbox.generateConstructor",
           "when": "editorLangId == php"
         }
       ]

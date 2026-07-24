@@ -36,6 +36,7 @@ function action(title: string, command: string, kind = vscode.CodeActionKind.Emp
 export class UsagesCodeActionProvider implements vscode.CodeActionProvider {
   public static readonly providedCodeActionKinds = [
     vscode.CodeActionKind.Empty,
+    vscode.CodeActionKind.Refactor,
     vscode.CodeActionKind.RefactorExtract,
     vscode.CodeActionKind.RefactorRewrite,
     vscode.CodeActionKind.RefactorMove,
@@ -62,6 +63,14 @@ export class UsagesCodeActionProvider implements vscode.CodeActionProvider {
 
     if (/\bclass\s+\w/.test(line) && !/\babstract\b/.test(line)) {
       actions.push(action('Extract interface…', 'phpToolbox.extractInterface', vscode.CodeActionKind.RefactorExtract));
+    }
+
+    if (/\b(class|trait)\s+\w/.test(line)) {
+      actions.push(action('Generate constructor…', 'phpToolbox.generateConstructor', vscode.CodeActionKind.Refactor));
+    }
+
+    if (/\b(implements|extends)\b/.test(line)) {
+      actions.push(action('Implement missing methods…', 'phpToolbox.implementMissing', vscode.CodeActionKind.Refactor));
     }
 
     return actions;
