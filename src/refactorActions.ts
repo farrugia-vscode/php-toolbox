@@ -128,6 +128,7 @@ function expressionActions(
 
   if (expression.isConstant) {
     actions.push(action('Extract constant…', 'phpToolbox.extractConstant', EXTRACT, [{ isReplacingAll: true }]));
+    actions.push(action('Extract constant to another class…', 'phpToolbox.extractConstantToClass', EXTRACT));
     actions.push(action('Introduce parameter…', 'phpToolbox.introduceParameter', REWRITE));
   }
 

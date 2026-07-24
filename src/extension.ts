@@ -6,6 +6,7 @@ import { showUsages } from './findUsages';
 import { InheritanceResolver } from './inheritanceResolver';
 import { forgetPsr4Roots } from './php/psr4';
 import { extractExpression, extractMethod } from './refactor/extractCommands';
+import { extractConstantToClass } from './refactor/extractConstantTo';
 import { extractInterface } from './refactor/extractInterface';
 import { generateConstructor, implementMissing } from './refactor/generate';
 import { inlineMethod, inlineVariable } from './refactor/inlineCommands';
@@ -135,6 +136,7 @@ export function activate(context: vscode.ExtensionContext): void {
       extractExpression('constant', options?.isReplacingAll ?? true),
     ),
     vscode.commands.registerCommand('phpToolbox.extractProperty', () => extractExpression('property')),
+    vscode.commands.registerCommand('phpToolbox.extractConstantToClass', extractConstantToClass),
     vscode.commands.registerCommand('phpToolbox.inlineVariable', inlineVariable),
     vscode.commands.registerCommand('phpToolbox.inlineMethod', inlineMethod),
     vscode.commands.registerCommand('phpToolbox.changeSignature', changeSignature),

@@ -48,6 +48,7 @@ They are in the command palette too, under **PHP:**.
 | Extract method          | statements selected in a method                  | moves them into a private method; reads become parameters, values the rest of the method still needs are returned |
 | Extract variable        | an expression selected                           | assigns it above the statement, optionally replacing every identical occurrence of the scope   |
 | Extract constant        | an expression made of literals                   | adds a `private const` and replaces every identical occurrence in the class                    |
+| Extract constant to…    | an expression made of literals                   | writes it as a `public const` of another class, and imports that class where it is used         |
 | Extract property        | an expression selected in a method               | adds a private property, initialised where the value used to be computed                       |
 | Introduce parameter     | an expression that reads no local state          | turns it into a parameter and passes the old value at every call site                          |
 | Inline variable         | a local variable assigned once                   | replaces its uses by the value and drops the assignment                                        |

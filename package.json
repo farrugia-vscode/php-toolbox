@@ -133,6 +133,11 @@
         "command": "phpToolbox.moveMethod",
         "title": "Move method to another class…",
         "category": "PHP"
+      },
+      {
+        "command": "phpToolbox.extractConstantToClass",
+        "title": "Extract constant to another class…",
+        "category": "PHP"
       }
     ],
     "menus": {
@@ -219,6 +224,10 @@
         },
         {
           "command": "phpToolbox.moveMethod",
+          "when": "editorLangId == php"
+        },
+        {
+          "command": "phpToolbox.extractConstantToClass",
           "when": "editorLangId == php"
         }
       ]
