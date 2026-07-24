@@ -92,3 +92,14 @@ export function applyEdits(text: string, edits: StubTextEdit[]): string {
 
   return lines.join('\n');
 }
+
+export class CodeAction {
+  command?: { command: string; title: string; arguments?: unknown[] };
+
+  constructor(
+    public readonly title: string,
+    public readonly kind?: unknown,
+  ) {}
+}
+
+export const CodeActionKind = { Empty: 'empty' };

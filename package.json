@@ -1,8 +1,8 @@
 {
   "name": "php-toolbox",
   "displayName": "PHP Toolbox",
-  "description": "Navigate and refactor PHP code: inherited symbols, usages grouped by intent, and workspace-wide rename or namespace move",
-  "version": "0.1.0",
+  "description": "Navigate and refactor PHP code the way PhpStorm does: extract and inline, change signature, move members, inherited symbols, usages grouped by intent, workspace-wide rename",
+  "version": "0.2.0",
   "publisher": "farrugia",
   "icon": "icon.png",
   "engines": {
@@ -43,6 +43,61 @@
         "command": "phpToolbox.moveClass",
         "title": "Move class…",
         "category": "PHP"
+      },
+      {
+        "command": "phpToolbox.extractMethod",
+        "title": "Extract method…",
+        "category": "PHP"
+      },
+      {
+        "command": "phpToolbox.extractVariable",
+        "title": "Extract variable…",
+        "category": "PHP"
+      },
+      {
+        "command": "phpToolbox.extractConstant",
+        "title": "Extract constant…",
+        "category": "PHP"
+      },
+      {
+        "command": "phpToolbox.extractProperty",
+        "title": "Extract property…",
+        "category": "PHP"
+      },
+      {
+        "command": "phpToolbox.inlineVariable",
+        "title": "Inline variable",
+        "category": "PHP"
+      },
+      {
+        "command": "phpToolbox.inlineMethod",
+        "title": "Inline method",
+        "category": "PHP"
+      },
+      {
+        "command": "phpToolbox.changeSignature",
+        "title": "Change signature…",
+        "category": "PHP"
+      },
+      {
+        "command": "phpToolbox.introduceParameter",
+        "title": "Introduce parameter…",
+        "category": "PHP"
+      },
+      {
+        "command": "phpToolbox.extractInterface",
+        "title": "Extract interface…",
+        "category": "PHP"
+      },
+      {
+        "command": "phpToolbox.pullMemberUp",
+        "title": "Pull member up…",
+        "category": "PHP"
+      },
+      {
+        "command": "phpToolbox.pushMemberDown",
+        "title": "Push member down…",
+        "category": "PHP"
       }
     ],
     "menus": {
@@ -62,6 +117,50 @@
         {
           "command": "phpToolbox.findUsages",
           "when": "editorLangId == php"
+        },
+        {
+          "command": "phpToolbox.extractMethod",
+          "when": "editorLangId == php"
+        },
+        {
+          "command": "phpToolbox.extractVariable",
+          "when": "editorLangId == php"
+        },
+        {
+          "command": "phpToolbox.extractConstant",
+          "when": "editorLangId == php"
+        },
+        {
+          "command": "phpToolbox.extractProperty",
+          "when": "editorLangId == php"
+        },
+        {
+          "command": "phpToolbox.inlineVariable",
+          "when": "editorLangId == php"
+        },
+        {
+          "command": "phpToolbox.inlineMethod",
+          "when": "editorLangId == php"
+        },
+        {
+          "command": "phpToolbox.changeSignature",
+          "when": "editorLangId == php"
+        },
+        {
+          "command": "phpToolbox.introduceParameter",
+          "when": "editorLangId == php"
+        },
+        {
+          "command": "phpToolbox.extractInterface",
+          "when": "editorLangId == php"
+        },
+        {
+          "command": "phpToolbox.pullMemberUp",
+          "when": "editorLangId == php"
+        },
+        {
+          "command": "phpToolbox.pushMemberDown",
+          "when": "editorLangId == php"
         }
       ]
     },
@@ -75,6 +174,11 @@
         "command": "phpToolbox.moveClass",
         "key": "ctrl+shift+f6",
         "when": "editorLangId == php && editorTextFocus"
+      },
+      {
+        "command": "editor.action.quickFix",
+        "key": "alt+enter",
+        "when": "editorLangId == php && editorHasCodeActionsProvider && editorTextFocus && !editorReadonly && !suggestWidgetVisible"
       }
     ]
   },

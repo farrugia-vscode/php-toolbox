@@ -4,8 +4,14 @@ import { UsagesCodeActionProvider } from './codeActions';
 import { showUsages } from './findUsages';
 import { InheritanceResolver } from './inheritanceResolver';
 import { forgetPsr4Roots } from './php/psr4';
+import { extractExpression, extractMethod } from './refactor/extractCommands';
+import { extractInterface } from './refactor/extractInterface';
+import { inlineMethod, inlineVariable } from './refactor/inlineCommands';
 import { moveClass, registerFileMoveSync } from './refactor/moveNamespace';
+import { pullMemberUp, pushMemberDown } from './refactor/moveMembers';
 import { PhpRenameProvider, renameType } from './refactor/renameProvider';
+import { changeSignature, introduceParameter } from './refactor/signatureCommands';
+import { RefactorCodeActionProvider } from './refactorActions';
 import type { Member } from './types';
 import { warmIndex } from './workspaceIndex';
 
@@ -112,6 +118,21 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('phpToolbox.findUsages', showUsages),
     vscode.commands.registerCommand('phpToolbox.moveClass', moveClass),
     vscode.commands.registerCommand('phpToolbox.renameType', renameType),
+    vscode.commands.registerCommand('phpToolbox.extractMethod', extractMethod),
+    vscode.commands.registerCommand('phpToolbox.extractVariable', (options?: { isReplacingAll?: boolean }) =>
+      extractExpression('variable', options?.isReplacingAll ?? false),
+    ),
+    vscode.commands.registerCommand('phpToolbox.extractConstant', (options?: { isReplacingAll?: boolean }) =>
+      extractExpression('constant', options?.isReplacingAll ?? true),
+    ),
+    vscode.commands.registerCommand('phpToolbox.extractProperty', () => extractExpression('property')),
+    vscode.commands.registerCommand('phpToolbox.inlineVariable', inlineVariable),
+    vscode.commands.registerCommand('phpToolbox.inlineMethod', inlineMethod),
+    vscode.commands.registerCommand('phpToolbox.changeSignature', changeSignature),
+    vscode.commands.registerCommand('phpToolbox.introduceParameter', introduceParameter),
+    vscode.commands.registerCommand('phpToolbox.extractInterface', extractInterface),
+    vscode.commands.registerCommand('phpToolbox.pullMemberUp', pullMemberUp),
+    vscode.commands.registerCommand('phpToolbox.pushMemberDown', pushMemberDown),
     vscode.languages.registerRenameProvider({ scheme: 'file', language: 'php' }, new PhpRenameProvider()),
     registerFileMoveSync(),
     composer,
@@ -119,6 +140,11 @@ export function activate(context: vscode.ExtensionContext): void {
       { scheme: 'file', language: 'php' },
       new UsagesCodeActionProvider(),
       { providedCodeActionKinds: UsagesCodeActionProvider.providedCodeActionKinds },
+    ),
+    vscode.languages.registerCodeActionsProvider(
+      { scheme: 'file', language: 'php' },
+      new RefactorCodeActionProvider(),
+      { providedCodeActionKinds: RefactorCodeActionProvider.providedCodeActionKinds },
     ),
   );
 }

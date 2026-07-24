@@ -48,10 +48,17 @@ export class UsagesCodeActionProvider implements vscode.CodeActionProvider {
       return [];
     }
 
-    return [
+    const line = document.lineAt(range.start.line).text;
+    const actions = [
       action(usages, 'phpToolbox.findUsages'),
       action('Rename…', 'phpToolbox.renameType'),
       action('Move class…', 'phpToolbox.moveClass'),
     ];
+
+    if (/\bclass\s+\w/.test(line) && !/\babstract\b/.test(line)) {
+      actions.push(action('Extract interface…', 'phpToolbox.extractInterface'));
+    }
+
+    return actions;
   }
 }
