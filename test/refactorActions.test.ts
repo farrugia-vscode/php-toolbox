@@ -90,7 +90,10 @@ describe('what the quick fix menu offers', () => {
     expect(titles).toContain('Pull member up…');
   });
 
-  test('offers nothing on a blank line', () => {
-    expect(titlesAt(CART, CART.indexOf('namespace App;') - 1)).toEqual([]);
+  test('offers no refactoring outside the code itself', () => {
+    const titles = titlesAt(CART, CART.indexOf('namespace App;') - 1);
+
+    // The file has no strict_types, which is the one thing worth saying up there.
+    expect(titles).toEqual(['Add declare(strict_types=1)']);
   });
 });

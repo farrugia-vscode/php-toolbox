@@ -1,7 +1,9 @@
 import * as vscode from 'vscode';
+import { intentionsAt } from './intentions';
 import { scopesFor } from './php/documentAnalysis';
 import { indexedFile, type IndexedFile } from './php/phpIndex';
 import { scopeAt, type FileScopes, type FunctionScope } from './php/scopes';
+import { toWorkspaceEdit } from './refactor/apply';
 import { sameOccurrences, targetExpression } from './refactor/extractExpression';
 
 /**
@@ -156,6 +158,13 @@ export class RefactorCodeActionProvider implements vscode.CodeActionProvider {
     if (scope && start === end && isInlinableVariable(scope, start)) {
       actions.push(action('Inline variable', 'phpToolbox.inlineVariable', INLINE));
     }
+
+    // Local rewrites carry their edits, so picking one applies it straight away.
+    intentionsAt(text, start).forEach((intention) => {
+      const created = new vscode.CodeAction(intention.title, REWRITE);
+      created.edit = toWorkspaceEdit(document, intention.edits);
+      actions.push(created);
+    });
 
     const file = indexedFile(document.uri, text);
 
