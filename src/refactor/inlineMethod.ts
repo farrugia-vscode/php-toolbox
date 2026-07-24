@@ -1,9 +1,10 @@
 import { COMPOSITE_KINDS } from '../php/expressions';
-import { bindings, isWholeValue, renamesFor, render, statementAround } from './inlineBody';
+import { astOf } from '../php/nodeIndex';
+import { bindings, isWholeValue, renamesFor, render, renderStatements, statementAround } from './inlineBody';
 import type { MethodCall, MethodDeclaration } from '../php/members';
 import { analyzeScopes, scopeAt, type FileScopes, type FunctionScope, type Span } from '../php/scopes';
 import type { TextEdit } from './editSet';
-import { afterLine, blankLineBefore, docblockStart, indentAt, lineStartOf, reindent } from './textLayout';
+import { afterLine, blankLineBefore, docblockStart, indentAt, indentUnit, lineStartOf } from './textLayout';
 
 /** A method that can be replaced by its body, and the shape that body takes. */
 export interface InlineTarget {
@@ -16,7 +17,15 @@ export interface InlineTarget {
   /** Node kind of that expression, which says whether it survives without parentheses. */
   valueKind: string | null;
   statements: Span[];
+  /** Early returns, which become the condition of what follows them once inlined. */
+  guards: Guard[];
   text: string;
+}
+
+/** An `if (…) { return; }` standing between the caller and the rest of the body. */
+export interface Guard {
+  statement: Span;
+  condition: Span;
 }
 
 /** A `$this` the inlined body keeps only works when the receiver is a plain variable. */
@@ -76,10 +85,20 @@ export function inlineTarget(sourceText: string, method: MethodDeclaration, isFi
   );
   const last = statements[statements.length - 1];
 
-  const empty = { method, scope, value: null, valueKind: null, statements, text: sourceText };
+  const guards = guardsIn(sourceText, statements);
+  const empty = { method, scope, value: null, valueKind: null, statements, guards, text: sourceText };
 
   if (returns.length === 0) {
     return { ...empty, bodyKind: statements.length === 0 ? 'empty' : 'statements' };
+  }
+
+  const guarded = returns.every((statement) =>
+    guards.some((guard) => isInside(statement, guard.statement)),
+  );
+
+  // Guard clauses have no value to hand back: what follows them becomes conditional instead.
+  if (guarded && method.returnType === 'void') {
+    return { ...empty, bodyKind: 'statements' };
   }
 
   if (returns.length > 1 || !last || returns[0].start !== last.start) {
@@ -101,6 +120,52 @@ export function inlineTarget(sourceText: string, method: MethodDeclaration, isFi
     .sort((first, second) => second.end - second.start - (first.end - first.start))[0];
 
   return { ...empty, bodyKind: 'expression', value, valueKind: node?.kind ?? null };
+}
+
+function isInside(span: Span, outer: Span): boolean {
+  return span.start >= outer.start && span.end <= outer.end;
+}
+
+/** Statements of the shape `if (…) { return; }`, which an inline can turn inside out. */
+function guardsIn(text: string, statements: Span[]): Guard[] {
+  const ast = astOf(text);
+  const guards: Guard[] = [];
+
+  if (!ast) {
+    return guards;
+  }
+
+  const walk = (node: any): void => {
+    if (!node || typeof node !== 'object') {
+      return;
+    }
+
+    if (Array.isArray(node)) {
+      node.forEach(walk);
+      return;
+    }
+
+    const children = node.kind === 'if' ? node.body?.children ?? [] : [];
+    const only = children.length === 1 ? children[0] : null;
+    const isGuard =
+      only?.kind === 'return' &&
+      !only.expr &&
+      !node.alternate &&
+      statements.some((statement) => statement.start === node.loc.start.offset);
+
+    if (isGuard) {
+      guards.push({
+        statement: { start: node.loc.start.offset, end: node.loc.end.offset },
+        condition: { start: node.test.loc.start.offset, end: node.test.loc.end.offset },
+      });
+    }
+
+    Object.keys(node).forEach((key) => key !== 'loc' && walk(node[key]));
+  };
+
+  walk(ast);
+
+  return guards;
 }
 
 /** Offsets of the expression a `return …;` hands back. */
@@ -177,16 +242,18 @@ export function inlineCall(
   }
 
   const renames = renamesFor(target, host);
-  const first = target.statements[0];
-  const last = target.statements[target.statements.length - 1];
-  const body = render(target, { start: first.start, end: last.end }, bound, receiver, renames);
   const indent = indentAt(hostText, statement.start);
+  const body = renderStatements(
+    target,
+    bound,
+    receiver,
+    renames,
+    indentAt(target.text, target.statements[0].start),
+    indent,
+    indentUnit(hostText),
+  );
 
-  return {
-    start: lineStartOf(hostText, statement.start),
-    end: statement.end,
-    text: reindent(body, indentAt(target.text, first.start), indent),
-  };
+  return { start: lineStartOf(hostText, statement.start), end: statement.end, text: body };
 }
 
 /** Removes the method itself, docblock and all, once nothing calls it. */

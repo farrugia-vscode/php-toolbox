@@ -134,3 +134,37 @@ describe('inlining a variable', () => {
     expect(isRefused(plan) && plan.error).toBe('$header is assigned 2 times and cannot be inlined.');
   });
 });
+
+const PAYMENT = `<?php
+
+namespace App;
+
+final class ProcessPayment
+{
+    public function handle(Invoice $invoice, PaymentInvoice $paymentInvoice): void
+    {
+        $this->recordSuccessfulPayment($invoice, $paymentInvoice);
+    }
+
+    private function recordSuccessfulPayment(Invoice $invoice, PaymentInvoice $paymentInvoice): void
+    {
+        // Already collected: the queue replayed the job.
+        if ($invoice->isPaid()) {
+            return;
+        }
+
+        $invoice->markAsPaid($paymentInvoice);
+        Customer::query()->where('domain', $invoice->domain)->first()?->reactivateShop();
+    }
+}
+`;
+
+describe('inlining a method that guards', () => {
+  test('turns the early return into the condition of what follows it', () => {
+    const { result } = inlineAll(PAYMENT, 'recordSuccessfulPayment');
+
+    expect(result).toContain('        if (!$invoice->isPaid()) {\n            $invoice->markAsPaid($paymentInvoice);');
+    expect(result).toContain("            Customer::query()->where('domain', $invoice->domain)->first()?->reactivateShop();\n        }");
+    expect(result).not.toContain('private function recordSuccessfulPayment');
+  });
+});

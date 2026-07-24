@@ -1,7 +1,9 @@
 /** Turning the body of a method into the code that replaces one of its calls. */
 import type { MethodCall } from '../php/members';
+import { nodeChain } from '../php/nodeIndex';
 import type { FunctionScope, Span } from '../php/scopes';
 import type { InlineTarget } from './inlineMethod';
+import { reindent } from './textLayout';
 
 /** What each parameter stands for at one call site, arguments and defaults together. */
 export function bindings(call: MethodCall, target: InlineTarget, hostText: string): Map<string, string> | null {
@@ -99,3 +101,87 @@ export function statementAround(scope: FunctionScope, offset: number): Span | nu
     .sort((first, second) => first.end - first.start - (second.end - second.start))[0] ?? null;
 }
 
+
+/** The condition of a guard, negated and with the call's arguments already substituted. */
+function negatedCondition(
+  target: InlineTarget,
+  condition: Span,
+  bound: Map<string, string>,
+  receiver: string,
+  renames: Map<string, string>,
+): string {
+  const node = nodeChain(target.text, condition.start).find(
+    (candidate) => candidate.loc.start.offset === condition.start && candidate.loc.end.offset === condition.end,
+  );
+  const rendered = (span: { loc: { start: { offset: number }; end: { offset: number } } }): string =>
+    render(target, { start: span.loc.start.offset, end: span.loc.end.offset }, bound, receiver, renames).trim();
+
+  if (node?.kind === 'unary' && node.type === '!') {
+    return rendered(node.what);
+  }
+
+  if (node?.kind === 'bin' && OPPOSITE[node.type]) {
+    return `${rendered(node.left)} ${OPPOSITE[node.type]} ${rendered(node.right)}`;
+  }
+
+  const whole = render(target, condition, bound, receiver, renames).trim();
+
+  if (node && SIMPLE_CONDITION.has(node.kind)) {
+    return `!${whole}`;
+  }
+
+  return `!(${whole})`;
+}
+
+const OPPOSITE: Record<string, string> = {
+  '===': '!==', '!==': '===', '==': '!=', '!=': '==', '<': '>=', '>=': '<', '>': '<=', '<=': '>',
+};
+
+const SIMPLE_CONDITION = new Set(['variable', 'call', 'propertylookup', 'nullsafepropertylookup', 'staticlookup']);
+
+/**
+ * The body as it reads at the call site.
+ *
+ * An early `return` cannot survive the move — it would return from the caller — so what
+ * follows a guard becomes the body of the negated guard instead.
+ */
+export function renderStatements(
+  target: InlineTarget,
+  bound: Map<string, string>,
+  receiver: string,
+  renames: Map<string, string>,
+  sourceIndent: string,
+  targetIndent: string,
+  unit: string,
+): string {
+  const build = (list: Span[], level: number): string[] => {
+    const indent = `${targetIndent}${unit.repeat(level)}`;
+    const guardIndex = list.findIndex((statement) =>
+      target.guards.some((guard) => guard.statement.start === statement.start),
+    );
+
+    if (guardIndex === -1) {
+      return list.length === 0
+        ? []
+        : [reindent(render(target, { start: list[0].start, end: list[list.length - 1].end }, bound, receiver, renames), sourceIndent, indent)];
+    }
+
+    const guard = target.guards.find((candidate) => candidate.statement.start === list[guardIndex].start)!;
+    const before = build(list.slice(0, guardIndex), level);
+    const rest = list.slice(guardIndex + 1);
+
+    // Nothing follows the guard, so there is nothing left for it to protect.
+    if (rest.length === 0) {
+      return before;
+    }
+
+    return [
+      ...before,
+      `${indent}if (${negatedCondition(target, guard.condition, bound, receiver, renames)}) {`,
+      ...build(rest, level + 1),
+      `${indent}}`,
+    ];
+  };
+
+  return build(target.statements, 0).join('\n');
+}
