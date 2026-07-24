@@ -1,11 +1,14 @@
 import { parseAst } from './engine';
 import { collectImports, resolve, trimLeadingSeparator, type Import } from './names';
 import {
+  accessFrom,
   callFrom,
+  promotedVisibility,
   constantFrom,
   methodFrom,
   propertyFrom,
   type ClassConstant,
+  type MemberAccess,
   type MethodCall,
   type MethodDeclaration,
   type PropertyDeclaration,
@@ -56,6 +59,7 @@ export interface ParsedFile {
   properties: PropertyDeclaration[];
   constants: ClassConstant[];
   calls: MethodCall[];
+  accesses: MemberAccess[];
 }
 
 const DECLARATION_KINDS = new Set(['class', 'interface', 'trait', 'enum']);
@@ -73,8 +77,10 @@ export function parseFile(text: string): ParsedFile {
     properties: [],
     constants: [],
     calls: [],
+    accesses: [],
   };
   const aliases = new Map<string, string>();
+  const called = new WeakSet<object>();
 
   const ast = parseAst(text);
 
@@ -144,19 +150,53 @@ export function parseFile(text: string): ParsedFile {
         }
       });
     } else if (node.kind === 'method' && node.name?.loc) {
-      parsed.methods.push(methodFrom(node, text, className));
+      const method = methodFrom(node, text, className);
+      parsed.methods.push(method);
+      // A promoted parameter declares a property; refactorings have to see it as one.
+      (node.arguments ?? []).forEach((argument: any, index: number) => {
+        const visibility = promotedVisibility(argument);
+        const param = method.params[index];
+
+        if (!visibility || !param) {
+          return;
+        }
+
+        const written = text.indexOf(`$${param.name}`, param.start);
+
+        parsed.properties.push({
+          name: param.name,
+          className,
+          visibility,
+          isStatic: false,
+          type: param.type,
+          nameStart: written + 1,
+          nameEnd: written + 1 + param.name.length,
+          start: param.start,
+          end: param.end,
+        });
+      });
     } else if (node.kind === 'propertystatement') {
       (node.properties ?? []).forEach((property: any) =>
         parsed.properties.push(propertyFrom(property, text, className, node)),
       );
     } else if (node.kind === 'classconstant') {
       (node.constants ?? []).forEach((constant: any) =>
-        parsed.constants.push(constantFrom(constant, className, node)),
+        parsed.constants.push(constantFrom(constant, text, className, node)),
       );
     } else if (node.kind === 'call') {
       const call = callFrom(node, text);
       if (call) {
         parsed.calls.push(call);
+        // The lookup under a call names the method, not a member of its own.
+        called.add(node.what);
+      }
+    } else if (
+      (node.kind === 'propertylookup' || node.kind === 'nullsafepropertylookup' || node.kind === 'staticlookup') &&
+      !called.has(node)
+    ) {
+      const access = accessFrom(node, text);
+      if (access) {
+        parsed.accesses.push(access);
       }
     } else if (node.kind === 'name') {
       const fqn = resolve(node.name, node.resolution, parsed.namespace, aliases);

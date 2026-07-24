@@ -50,6 +50,8 @@ export interface PropertyDeclaration {
   visibility: Visibility;
   isStatic: boolean;
   type: string | null;
+  nameStart: number;
+  nameEnd: number;
   start: number;
   end: number;
 }
@@ -58,6 +60,8 @@ export interface ClassConstant {
   name: string;
   className: string;
   visibility: Visibility;
+  nameStart: number;
+  nameEnd: number;
   start: number;
   end: number;
 }
@@ -91,6 +95,17 @@ export interface MethodCall {
   hasSpread: boolean;
 }
 
+/** A member read or written without being called: `$this->total`, `Order::STATUS`. */
+export interface MemberAccess {
+  name: string;
+  kind: 'property' | 'staticProperty' | 'constant';
+  receiverKind: ReceiverKind;
+  receiverText: string;
+  receiverType: string | null;
+  nameStart: number;
+  nameEnd: number;
+}
+
 function visibilityOf(node: any): Visibility {
   const visibility = node.visibility;
 
@@ -112,6 +127,20 @@ export function typeText(node: any, text: string, isNullable = false): string | 
   return isNullable && !written.startsWith('?') && !written.includes('|') ? `?${written}` : written;
 }
 
+/** Visibility a constructor parameter is promoted with, or null when it is a plain one. */
+export function promotedVisibility(node: any): Visibility | null {
+  const flags = typeof node.flags === 'number' ? node.flags : 0;
+
+  if (flags === 2) {
+    return 'protected';
+  }
+  if (flags === 4) {
+    return 'private';
+  }
+
+  return flags === 1 ? 'public' : null;
+}
+
 export function paramFrom(node: any, text: string): ParamInfo {
   return {
     name: typeof node.name === 'string' ? node.name : node.name?.name ?? '',
@@ -119,7 +148,7 @@ export function paramFrom(node: any, text: string): ParamInfo {
     defaultText: node.value ? text.slice(node.value.loc.start.offset, node.value.loc.end.offset) : null,
     isVariadic: node.variadic === true,
     isByRef: node.byref === true,
-    isPromoted: Boolean(node.flags) || Boolean(node.visibility) || node.readonly === true,
+    isPromoted: promotedVisibility(node) !== null,
     start: node.loc.start.offset,
     end: node.loc.end.offset,
   };
@@ -239,23 +268,72 @@ export function callFrom(node: any, text: string): MethodCall | null {
   };
 }
 
-export function propertyFrom(node: any, text: string, className: string, group: any): PropertyDeclaration {
+/** A property or constant read on an object or a class, or null for anything else. */
+export function accessFrom(node: any, text: string): MemberAccess | null {
+  const isStatic = node.kind === 'staticlookup';
+  const offset = node.offset;
+
+  if (!isStatic && offset?.kind !== 'identifier' && offset?.kind !== 'name') {
+    return null;
+  }
+
+  // `Foo::$bar` names a static property, `Foo::BAR` a constant, `Foo::class` neither.
+  const name = typeof offset?.name === 'string' ? offset.name : null;
+
+  if (name === null || (isStatic && name === 'class')) {
+    return null;
+  }
+
+  const kind = isStatic ? (offset.kind === 'variable' ? 'staticProperty' : 'constant') : 'property';
+
   return {
-    name: typeof node.name === 'string' ? node.name : node.name?.name ?? '',
+    name,
+    kind,
+    ...receiverOf(node.what, text),
+    nameStart: offset.loc.start.offset,
+    nameEnd: offset.loc.end.offset,
+  };
+}
+
+/** Offsets of the name inside a member declaration, which the parser reports unevenly. */
+function nameRange(node: any, text: string, group: any, written: string): [number, number] {
+  if (node.name?.loc) {
+    return [node.name.loc.start.offset, node.name.loc.end.offset];
+  }
+
+  const found = text.indexOf(written, group.loc.start.offset);
+
+  return found === -1 ? [group.loc.start.offset, group.loc.start.offset] : [found, found + written.length];
+}
+
+export function propertyFrom(node: any, text: string, className: string, group: any): PropertyDeclaration {
+  const name = typeof node.name === 'string' ? node.name : node.name?.name ?? '';
+  const [nameStart, nameEnd] = nameRange(node, text, group, `$${name}`);
+
+  return {
+    name,
     className,
     visibility: visibilityOf(group),
     isStatic: group.isStatic === true,
     type: typeText(node.type, text, node.nullable === true),
+    // The `$` is part of the written name, but not of the name a rename replaces.
+    nameStart: text[nameStart] === '$' ? nameStart + 1 : nameStart,
+    nameEnd,
     start: group.loc.start.offset,
     end: group.loc.end.offset,
   };
 }
 
-export function constantFrom(node: any, className: string, group: any): ClassConstant {
+export function constantFrom(node: any, text: string, className: string, group: any): ClassConstant {
+  const name = typeof node.name === 'string' ? node.name : node.name?.name ?? '';
+  const [nameStart, nameEnd] = nameRange(node, text, group, name);
+
   return {
-    name: typeof node.name === 'string' ? node.name : node.name?.name ?? '',
+    name,
     className,
     visibility: visibilityOf(group),
+    nameStart,
+    nameEnd,
     start: group.loc.start.offset,
     end: group.loc.end.offset,
   };

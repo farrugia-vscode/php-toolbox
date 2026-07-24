@@ -69,6 +69,17 @@ function isOnMethodName(file: IndexedFile, offset: number): boolean {
   );
 }
 
+/** Anywhere a member is named: its declaration, a call to it, or a read of it. */
+function isOnMemberName(file: IndexedFile, offset: number): boolean {
+  const declared = [...file.parsed.methods, ...file.parsed.properties, ...file.parsed.constants];
+
+  return (
+    declared.some((member) => offset >= member.nameStart && offset <= member.nameEnd) ||
+    file.parsed.calls.some((call) => offset >= call.nameStart && offset <= call.nameEnd) ||
+    file.parsed.accesses.some((access) => offset >= access.nameStart && offset <= access.nameEnd)
+  );
+}
+
 function isOnMember(file: IndexedFile, offset: number): boolean {
   const members = [...file.parsed.methods, ...file.parsed.properties, ...file.parsed.constants];
 
@@ -147,6 +158,10 @@ export class RefactorCodeActionProvider implements vscode.CodeActionProvider {
     }
 
     const file = indexedFile(document.uri, text);
+
+    if (isOnMemberName(file, start)) {
+      actions.push(action('Rename…', 'phpToolbox.renameMember', REWRITE));
+    }
 
     if (isOnMethodName(file, start)) {
       actions.push(action('Inline method', 'phpToolbox.inlineMethod', INLINE));

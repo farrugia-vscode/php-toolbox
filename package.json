@@ -103,6 +103,11 @@
         "command": "phpToolbox.showActions",
         "title": "Show refactorings…",
         "category": "PHP"
+      },
+      {
+        "command": "phpToolbox.renameMember",
+        "title": "Rename method, property or constant…",
+        "category": "PHP"
       }
     ],
     "menus": {
@@ -165,6 +170,10 @@
         },
         {
           "command": "phpToolbox.pushMemberDown",
+          "when": "editorLangId == php"
+        },
+        {
+          "command": "phpToolbox.renameMember",
           "when": "editorLangId == php"
         }
       ]
