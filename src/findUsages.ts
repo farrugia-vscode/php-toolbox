@@ -60,7 +60,13 @@ function toItems(usages: Usage[]): UsageQuickPickItem[] {
   return items;
 }
 
-export async function showUsages(): Promise<void> {
+/** Narrows the search to what the caller asked for: an interface is looked up for its implementations. */
+export interface UsagesSearch {
+  categories?: string[];
+  label?: string;
+}
+
+export async function showUsages(search: UsagesSearch = {}): Promise<void> {
   const editor = vscode.window.activeTextEditor;
   if (!editor || editor.document.languageId !== 'php') {
     return;
@@ -72,22 +78,27 @@ export async function showUsages(): Promise<void> {
     return;
   }
 
+  const label = search.label ?? 'usages';
   const source = new vscode.CancellationTokenSource();
-  const usages = await vscode.window.withProgress(
-    { location: vscode.ProgressLocation.Window, title: `Searching usages of ${name}…`, cancellable: true },
+  const found = await vscode.window.withProgress(
+    { location: vscode.ProgressLocation.Window, title: `Searching ${label} of ${name}…`, cancellable: true },
     (_progress, token) => {
       token.onCancellationRequested(() => source.cancel());
       return findUsages(name, editor.document.uri, source.token);
     },
   );
 
+  const usages = search.categories
+    ? found.filter((usage) => search.categories?.includes(usage.category))
+    : found;
+
   if (usages.length === 0) {
-    vscode.window.showInformationMessage(`No usages found for ${name}.`);
+    vscode.window.showInformationMessage(`No ${label} found for ${name}.`);
     return;
   }
 
   const picked = await vscode.window.showQuickPick(toItems(usages), {
-    placeHolder: `${name} — ${usages.length} usages`,
+    placeHolder: `${name} — ${usages.length} ${label}`,
     matchOnDescription: true,
     matchOnDetail: true,
   });

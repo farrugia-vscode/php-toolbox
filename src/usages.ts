@@ -123,3 +123,9 @@ function dedupe(usages: Usage[]): Usage[] {
 }
 
 export const CATEGORY_ORDER = CATEGORIES.map(({ category }) => category);
+
+/** Honouring a contract: what "find implementations" means for an interface or an abstract class. */
+export const IMPLEMENTATION_CATEGORIES = ['Implemented by', 'Extended by'];
+
+/** A trait has no implementations; it has classes that pull it in. */
+export const TRAIT_USER_CATEGORIES = ['Used as a trait'];
