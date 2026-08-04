@@ -1,9 +1,13 @@
 import * as vscode from 'vscode';
 import { KIND_ICON, findClassLikeSymbols, pickEnclosingClass } from './classSymbols';
+import { MixinCompletionProvider } from './completion/mixinCompletionProvider';
+import { MixinDefinitionProvider, MixinHoverProvider } from './mixinMemberProviders';
 import { UsagesCodeActionProvider } from './codeActions';
 import { findImplementations } from './findImplementations';
 import { showUsages } from './findUsages';
 import { InheritanceResolver } from './inheritanceResolver';
+import { PathCompletionProvider } from './paths/pathCompletionProvider';
+import { PathLinkProvider } from './paths/pathLinkProvider';
 import { forgetPsr4Roots } from './php/psr4';
 import { extractExpression, extractMethod } from './refactor/extractCommands';
 import { extractConstantToClass } from './refactor/extractConstantTo';
@@ -15,6 +19,7 @@ import { moveClass, registerFileMoveSync } from './refactor/moveNamespace';
 import { pullMemberUp, pushMemberDown } from './refactor/moveMembers';
 import { PhpRenameProvider, renameType } from './refactor/renameProvider';
 import { renameMember } from './refactor/renameMember';
+import { rename, renameLocal } from './refactor/renameCommands';
 import { safeDelete } from './refactor/safeDelete';
 import { changeSignature, introduceParameter } from './refactor/signatureCommands';
 import { RefactorCodeActionProvider, showRefactorings } from './refactorActions';
@@ -127,6 +132,8 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('phpToolbox.renameType', renameType),
     vscode.commands.registerCommand('phpToolbox.showActions', showRefactorings),
     vscode.commands.registerCommand('phpToolbox.renameMember', renameMember),
+    vscode.commands.registerCommand('phpToolbox.renameLocal', renameLocal),
+    vscode.commands.registerCommand('phpToolbox.rename', rename),
     vscode.commands.registerCommand('phpToolbox.safeDelete', safeDelete),
     vscode.commands.registerCommand('phpToolbox.extractMethod', extractMethod),
     vscode.commands.registerCommand('phpToolbox.extractVariable', (options?: { isReplacingAll?: boolean }) =>
@@ -159,6 +166,28 @@ export function activate(context: vscode.ExtensionContext): void {
       { scheme: 'file', language: 'php' },
       new RefactorCodeActionProvider(),
       { providedCodeActionKinds: RefactorCodeActionProvider.providedCodeActionKinds },
+    ),
+    vscode.languages.registerCompletionItemProvider(
+      { scheme: 'file', language: 'php' },
+      new MixinCompletionProvider(),
+      '>',
+    ),
+    vscode.languages.registerHoverProvider(
+      { scheme: 'file', language: 'php' },
+      new MixinHoverProvider(),
+    ),
+    vscode.languages.registerDefinitionProvider(
+      { scheme: 'file', language: 'php' },
+      new MixinDefinitionProvider(),
+    ),
+    vscode.languages.registerDocumentLinkProvider(
+      { scheme: 'file', language: 'php' },
+      new PathLinkProvider(),
+    ),
+    vscode.languages.registerCompletionItemProvider(
+      { scheme: 'file', language: 'php' },
+      new PathCompletionProvider(),
+      '/',
     ),
   );
 }
