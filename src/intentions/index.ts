@@ -2,7 +2,14 @@ import { nodeChain } from '../php/nodeIndex';
 import type { TextEdit } from '../refactor/editSet';
 import { indentAt, indentUnit } from '../refactor/textLayout';
 import { negate } from './negation';
+import { textOf } from './nodeText';
 import { promoteParameter } from './promoteParameter';
+import {
+  concatToInterpolation,
+  concatToSprintf,
+  interpolationToConcat,
+  interpolationToSprintf,
+} from './stringForms';
 
 /** A small, local rewrite offered where the cursor already is. */
 export interface Intention {
@@ -11,10 +18,6 @@ export interface Intention {
 }
 
 type Finder = (text: string, chain: any[], offset: number) => Intention | null;
-
-function textOf(text: string, node: any): string {
-  return text.slice(node.loc.start.offset, node.loc.end.offset);
-}
 
 /** Moves a block one level to the left, for code that loses a nesting level. */
 function dedent(block: string, unit: string): string {
@@ -131,57 +134,6 @@ const closureToArrow: Finder = (text, chain) => {
   };
 };
 
-/** Only what reads the same inside double quotes: no escapes, no expressions. */
-const PLAIN_LITERAL = /^'[^'"$\\{]*'$/;
-const INTERPOLABLE = new Set(['variable', 'propertylookup', 'offsetlookup']);
-
-function interpolated(text: string, node: any): string | null {
-  const written = textOf(text, node);
-
-  if (node.kind === 'string' && PLAIN_LITERAL.test(written.trim())) {
-    return written.trim().slice(1, -1);
-  }
-
-  if (INTERPOLABLE.has(node.kind) && /^\$[\w>\-\[\]'"]+$/.test(written.trim())) {
-    return `{${written.trim()}}`;
-  }
-
-  return null;
-}
-
-/** `'Hello ' . $name . '!'` says less than `"Hello {$name}!"`. */
-const concatToInterpolation: Finder = (text, chain) => {
-  // `a . b . c` nests to the left, so the whole chain is the outermost of them.
-  const node = [...chain].reverse().find((candidate) => candidate.kind === 'bin' && candidate.type === '.');
-
-  if (!node) {
-    return null;
-  }
-
-  const operands: any[] = [];
-  const flatten = (current: any): void => {
-    if (current.kind === 'bin' && current.type === '.') {
-      flatten(current.left);
-      flatten(current.right);
-      return;
-    }
-
-    operands.push(current);
-  };
-  flatten(node);
-
-  const parts = operands.map((operand) => interpolated(text, operand));
-
-  if (parts.some((part) => part === null) || operands.filter((operand) => operand.kind !== 'string').length === 0) {
-    return null;
-  }
-
-  return {
-    title: 'Convert to string interpolation',
-    edits: [{ start: node.loc.start.offset, end: node.loc.end.offset, text: `"${parts.join('')}"` }],
-  };
-};
-
 /** Nothing else in the file says the types are enforced. */
 const addStrictTypes: Finder = (text, _chain, offset) => {
   const open = text.indexOf('<?php');
@@ -204,6 +156,9 @@ const FINDERS: Finder[] = [
   splitIf,
   closureToArrow,
   concatToInterpolation,
+  concatToSprintf,
+  interpolationToConcat,
+  interpolationToSprintf,
   addStrictTypes,
   (text, _chain, offset) => promoteParameter(text, offset),
 ];

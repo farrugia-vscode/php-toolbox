@@ -5,9 +5,14 @@ the PhpStorm habits, on `Alt+Enter`.
 
 ## Features
 
+### Rename
+
+**PHP: Rename…** (`Shift+F6`) renames whatever the cursor is on, picking what to do from
+what it finds there: a class, a member, or a local variable.
+
 ### Rename a class, interface, trait or enum
 
-**PHP: Rename class, interface or trait…** (`Shift+F6`) rewrites the declaration and every
+**PHP: Rename class, interface or trait…** rewrites the declaration and every
 mention of it across the workspace, then renames the file to match.
 
 It resolves names the way PHP does — through imports, aliases, the current namespace and
@@ -30,6 +35,36 @@ namespace and every reference follow the file.
 **PHP: Go to Symbol (including inherited)** lists the members of the class under the
 cursor together with everything it inherits — parents, interfaces, traits, `@mixin`
 targets and docblock `@property`/`@method` declarations — grouped by where they come from.
+
+### `@mixin` members: completion, hover, go to definition
+
+`@mixin` support is a premium Intelephense feature, so on a free licence everything an
+annotation forwards is missing. Two cases cover most of a Laravel project:
+
+* ide-helper called with `-M` writes model attributes to a separate `IdeHelperSite` class
+  and points the model at it, so `$site->` offers no column at all;
+* `Relation` forwards to the query builder through
+  `@mixin \Illuminate\Database\Eloquent\Builder<TRelatedModel>`, so
+  `$invoice->customer()->exists()` offers nothing either.
+
+Those members come back in the completion list, their type shows on hover, and `Ctrl+Click`
+goes to the `@property` line that declares them. Only what a `@mixin` adds is contributed,
+so nothing is listed twice — unless the receiver is a variable the server failed to type,
+in which case its list is empty and the whole class is offered instead.
+
+The type of such a variable is read from the server, from the declared type of the
+parameter it came from, or from the closest assignment above it (`$customer =
+$site->customer;`). One hop, no inference engine: a longer chain stays silent.
+
+### Paths in strings
+
+A string that names a file next to the one being edited becomes a link, so
+`require __DIR__ . '/web/auth.php';` opens on `Ctrl+Click`. This works on any string, not
+only on `require` and `include`: the path is resolved against the directory of the current
+file, and nothing is linked unless the file is really there.
+
+Typing such a path completes it, directory by directory — outside `require` and `include`,
+where Intelephense already offers the same list.
 
 ### Find usages
 
@@ -58,6 +93,7 @@ They are in the command palette too, under **PHP:**.
 | Push member down        | the cursor on a member                           | copies it into the classes that extend it, imports included                                    |
 | Extract interface       | the cursor on a class declaration                | publishes the public methods as an interface next to the class, and implements it              |
 | Rename member           | the cursor on a method, property or constant     | renames it everywhere, overrides and promoted constructor parameters included                  |
+| Rename variable         | the cursor on a local variable or a parameter    | renames it in its function, following it into the closures that capture it and into interpolated strings |
 | Move method             | the cursor on a method name                      | moves it to another class, routing the calls through a property or the class name              |
 | Safe delete             | the cursor on a member or a type                 | lists what still uses it before removing anything                                              |
 | Find implementations    | the cursor on an abstract or interface method    | lists the classes that answer the call, and jumps to one                                       |
@@ -68,7 +104,10 @@ Smaller rewrites are offered the same way, and applied straight from the menu:
 
 - invert an `if`, merge it with the one nested inside it, or split a `&&` condition into two
 - turn a closure that only returns into an arrow function
-- turn a concatenation into an interpolated string
+- rewrite a string the other two ways: concatenation, interpolation and `sprintf` convert
+  into one another, and only the forms that keep the same result are offered — a chain
+  holding a call has no interpolated form, and an escape such as `\n` keeps the string
+  double-quoted
 - promote a constructor parameter to a property, dropping the declaration and the assignment
 - add `declare(strict_types=1)`
 
