@@ -90,10 +90,24 @@ function isOnMemberName(file: IndexedFile, offset: number): boolean {
   );
 }
 
-function isOnMember(file: IndexedFile, offset: number): boolean {
+/**
+ * The name of a member where it is declared. A member's span covers its whole body, so
+ * testing against it offered member refactorings on every line of every method.
+ */
+function isOnDeclaredMemberName(file: IndexedFile, offset: number): boolean {
   const members = [...file.parsed.methods, ...file.parsed.properties, ...file.parsed.constants];
 
-  return members.some((member) => offset >= member.start && offset <= member.end);
+  return members.some((member) => offset >= member.nameStart && offset <= member.nameEnd);
+}
+
+/** What a deletion can take away: a member, or the type the file declares. */
+function isOnDeletableName(file: IndexedFile, offset: number): boolean {
+  return (
+    isOnDeclaredMemberName(file, offset) ||
+    file.parsed.declarations.some(
+      (declaration) => offset >= declaration.start && offset <= declaration.end,
+    )
+  );
 }
 
 function expressionActions(
@@ -192,7 +206,7 @@ export class RefactorCodeActionProvider implements vscode.CodeActionProvider {
       actions.push(action('Inline method', 'phpToolbox.inlineMethod', INLINE));
     }
 
-    if (isOnMember(file, start)) {
+    if (isOnDeletableName(file, start)) {
       actions.push(action('Safe delete', 'phpToolbox.safeDelete', REWRITE));
     }
 
@@ -204,7 +218,7 @@ export class RefactorCodeActionProvider implements vscode.CodeActionProvider {
       actions.push(action('Move method to another class…', 'phpToolbox.moveMethod', MOVE));
     }
 
-    if (isOnMember(file, start)) {
+    if (isOnDeclaredMemberName(file, start)) {
       actions.push(action('Pull member up…', 'phpToolbox.pullMemberUp', MOVE));
       actions.push(action('Push member down…', 'phpToolbox.pushMemberDown', MOVE));
     }

@@ -90,6 +90,22 @@ describe('what the quick fix menu offers', () => {
     expect(titles).toContain('Pull member up…');
   });
 
+  test('keeps the member refactorings out of a method body, where they have no target', () => {
+    const titles = titlesAt(CART, CART.indexOf('$total += '));
+
+    expect(titles).not.toContain('Safe delete');
+    expect(titles).not.toContain('Pull member up…');
+    expect(titles).not.toContain('Push member down…');
+  });
+
+  test('offers safe delete on a member name and on the class name', () => {
+    const onMethod = CART.indexOf('function total(') + 'function '.length + 1;
+    const onClass = CART.indexOf('class Cart') + 'class '.length + 1;
+
+    expect(titlesAt(CART, onMethod)).toContain('Safe delete');
+    expect(titlesAt(CART, onClass)).toContain('Safe delete');
+  });
+
   test('offers no refactoring outside the code itself', () => {
     const titles = titlesAt(CART, CART.indexOf('namespace App;') - 1);
 
