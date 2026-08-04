@@ -1,8 +1,10 @@
 import { nodeChain } from '../php/nodeIndex';
 import type { TextEdit } from '../refactor/editSet';
 import { indentAt, indentUnit } from '../refactor/textLayout';
+import { captureInClosure, closureToArrow } from './closures';
 import { negate } from './negation';
 import { textOf } from './nodeText';
+import { documentMethod } from './phpdoc';
 import { promoteParameter } from './promoteParameter';
 import {
   concatToInterpolation,
@@ -108,32 +110,6 @@ const splitIf: Finder = (text, chain) => {
   };
 };
 
-/** A closure whose whole body is a `return` is an arrow function waiting to happen. */
-const closureToArrow: Finder = (text, chain) => {
-  const node = chain.find((candidate) => candidate.kind === 'closure');
-  const statements = node?.body?.children ?? [];
-  const returned = statements.length === 1 && statements[0].kind === 'return' ? statements[0].expr : null;
-
-  if (!node || !returned || (node.uses ?? []).some((used: any) => used.byref)) {
-    return null;
-  }
-
-  const params = (node.arguments ?? []).map((argument: any) => textOf(text, argument)).join(', ');
-  const modifier = node.isStatic ? 'static ' : '';
-  const returnType = node.type ? `: ${textOf(text, node.type)}` : '';
-
-  return {
-    title: 'Convert to arrow function',
-    edits: [
-      {
-        start: node.loc.start.offset,
-        end: node.loc.end.offset,
-        text: `${modifier}fn (${params})${returnType} => ${textOf(text, returned)}`,
-      },
-    ],
-  };
-};
-
 /** Nothing else in the file says the types are enforced. */
 const addStrictTypes: Finder = (text, _chain, offset) => {
   const open = text.indexOf('<?php');
@@ -155,10 +131,12 @@ const FINDERS: Finder[] = [
   mergeNestedIf,
   splitIf,
   closureToArrow,
+  captureInClosure,
   concatToInterpolation,
   concatToSprintf,
   interpolationToConcat,
   interpolationToSprintf,
+  documentMethod,
   addStrictTypes,
   (text, _chain, offset) => promoteParameter(text, offset),
 ];
