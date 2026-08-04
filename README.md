@@ -36,6 +36,23 @@ namespace and every reference follow the file.
 cursor together with everything it inherits — parents, interfaces, traits, `@mixin`
 targets and docblock `@property`/`@method` declarations — grouped by where they come from.
 
+### What a free Intelephense licence leaves out
+
+Several features are marked PREMIUM in Intelephense and simply do not answer without a
+licence key. These fill them in, for PHP files:
+
+| Feature | Where it shows |
+|---------|----------------|
+| Code folding | declarations, blocks, runs of `use`, docblocks, runs of `//`, heredocs, `# region` |
+| Smart select | `Shift+Alt+→` grows by syntax step, starting inside a string's quotes |
+| Go to type definition | on a variable or a member, lands on the class it holds |
+| Go to declaration | on a method, lands on the interface or abstract method it answers |
+| Type hierarchy | supertypes and subtypes, read from the parsed project |
+| Inlay hints | parameter names on constructors, static calls and calls on `$this` |
+| Code lens | references and subtypes above each declaration |
+| Document links | see *Paths in strings* below |
+| `@mixin` | see just below |
+
 ### `@mixin` members: completion, hover, go to definition
 
 `@mixin` support is a premium Intelephense feature, so on a free licence everything an
@@ -104,6 +121,10 @@ Smaller rewrites are offered the same way, and applied straight from the menu:
 
 - invert an `if`, merge it with the one nested inside it, or split a `&&` condition into two
 - turn a closure that only returns into an arrow function
+- capture the outer variables a closure reads but never declares, in its `use (…)`
+- write the docblock a method is missing, and only the part of it the signature cannot
+  carry: the element type of an array, the exceptions the body throws
+- import a type the file names without a `use`, one action per candidate namespace
 - rewrite a string the other two ways: concatenation, interpolation and `sprintf` convert
   into one another, and only the forms that keep the same result are offered — a chain
   holding a call has no interpolated form, and an escape such as `\n` keeps the string

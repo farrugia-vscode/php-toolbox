@@ -1,6 +1,12 @@
 import * as vscode from 'vscode';
 import { KIND_ICON, findClassLikeSymbols, pickEnclosingClass } from './classSymbols';
 import { MixinCompletionProvider } from './completion/mixinCompletionProvider';
+import { PhpFoldingRangeProvider, PhpSelectionRangeProvider } from './editorRanges';
+import { PhpDeclarationProvider, PhpTypeDefinitionProvider } from './typeNavigation';
+import { ImportCodeActionProvider } from './refactor/importSymbol';
+import { PhpTypeHierarchyProvider } from './typeHierarchy';
+import { PhpInlayHintsProvider } from './inlayHints';
+import { PhpCodeLensProvider, revealAt } from './codeLens';
 import { MixinDefinitionProvider, MixinHoverProvider } from './mixinMemberProviders';
 import { UsagesCodeActionProvider } from './codeActions';
 import { findImplementations } from './findImplementations';
@@ -176,6 +182,40 @@ export function activate(context: vscode.ExtensionContext): void {
       { scheme: 'file', language: 'php' },
       new MixinHoverProvider(),
     ),
+    vscode.languages.registerCodeActionsProvider(
+      { scheme: 'file', language: 'php' },
+      new ImportCodeActionProvider(),
+      { providedCodeActionKinds: ImportCodeActionProvider.providedCodeActionKinds },
+    ),
+    vscode.languages.registerFoldingRangeProvider(
+      { scheme: 'file', language: 'php' },
+      new PhpFoldingRangeProvider(),
+    ),
+    vscode.languages.registerSelectionRangeProvider(
+      { scheme: 'file', language: 'php' },
+      new PhpSelectionRangeProvider(),
+    ),
+    vscode.languages.registerTypeDefinitionProvider(
+      { scheme: 'file', language: 'php' },
+      new PhpTypeDefinitionProvider(),
+    ),
+    vscode.languages.registerDeclarationProvider(
+      { scheme: 'file', language: 'php' },
+      new PhpDeclarationProvider(),
+    ),
+    vscode.languages.registerTypeHierarchyProvider(
+      { scheme: 'file', language: 'php' },
+      new PhpTypeHierarchyProvider(),
+    ),
+    vscode.languages.registerInlayHintsProvider(
+      { scheme: 'file', language: 'php' },
+      new PhpInlayHintsProvider(),
+    ),
+    vscode.languages.registerCodeLensProvider(
+      { scheme: 'file', language: 'php' },
+      new PhpCodeLensProvider(),
+    ),
+    vscode.commands.registerCommand('phpToolbox.revealAt', revealAt),
     vscode.languages.registerDefinitionProvider(
       { scheme: 'file', language: 'php' },
       new MixinDefinitionProvider(),
