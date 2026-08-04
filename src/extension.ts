@@ -8,7 +8,6 @@ import { PhpTypeHierarchyProvider } from './typeHierarchy';
 import { PhpInlayHintsProvider } from './inlayHints';
 import { PhpCodeLensProvider, revealAt } from './codeLens';
 import { MixinDefinitionProvider, MixinHoverProvider } from './mixinMemberProviders';
-import { UsagesCodeActionProvider } from './codeActions';
 import { findImplementations } from './findImplementations';
 import { showUsages } from './findUsages';
 import { showMemberUsages } from './findMemberUsages';
@@ -29,7 +28,7 @@ import { renameMember } from './refactor/renameMember';
 import { rename, renameLocal } from './refactor/renameCommands';
 import { safeDelete } from './refactor/safeDelete';
 import { changeSignature, introduceParameter } from './refactor/signatureCommands';
-import { RefactorCodeActionProvider, showRefactorings } from './refactorActions';
+import { PhpCodeActionProvider, showRefactorings } from './menu/provider';
 import type { Member } from './types';
 import { warmIndex } from './workspaceIndex';
 
@@ -167,13 +166,8 @@ export function activate(context: vscode.ExtensionContext): void {
     composer,
     vscode.languages.registerCodeActionsProvider(
       { scheme: 'file', language: 'php' },
-      new UsagesCodeActionProvider(),
-      { providedCodeActionKinds: UsagesCodeActionProvider.providedCodeActionKinds },
-    ),
-    vscode.languages.registerCodeActionsProvider(
-      { scheme: 'file', language: 'php' },
-      new RefactorCodeActionProvider(),
-      { providedCodeActionKinds: RefactorCodeActionProvider.providedCodeActionKinds },
+      new PhpCodeActionProvider(),
+      { providedCodeActionKinds: PhpCodeActionProvider.providedCodeActionKinds },
     ),
     vscode.languages.registerCompletionItemProvider(
       { scheme: 'file', language: 'php' },

@@ -9,7 +9,7 @@ mock.module('../src/workspaceIndex', () => ({
   warmIndex: () => {},
 }));
 
-const { RefactorCodeActionProvider } = await import('../src/refactorActions');
+const { PhpCodeActionProvider } = await import('../src/menu/provider');
 
 const CART = `<?php
 
@@ -50,7 +50,7 @@ function documentOf(text: string) {
 }
 
 function titlesAt(text: string, from: number, to = from): string[] {
-  const provider = new RefactorCodeActionProvider();
+  const provider = new PhpCodeActionProvider();
   const range = new Range(new Position(0, from), new Position(0, to));
 
   return provider
@@ -111,5 +111,75 @@ describe('what the quick fix menu offers', () => {
 
     // The file has no strict_types, which is the one thing worth saying up there.
     expect(titles).toEqual(['Add declare(strict_types=1)']);
+  });
+});
+
+const CHECKOUT = `<?php
+
+namespace App;
+
+interface Payer
+{
+    public function pay(int $amount): void;
+}
+
+final class Checkout implements Payer
+{
+    public function pay(int $amount): void
+    {
+        $this->pay($amount);
+    }
+}
+`;
+
+describe('what each place offers', () => {
+  test('a class name: the type actions, each exactly once', () => {
+    const titles = titlesAt(CHECKOUT, CHECKOUT.indexOf('class Checkout') + 'class '.length + 1);
+
+    expect(titles).toContain('Find usages');
+    expect(titles).toContain('Rename…');
+    expect(titles).toContain('Move class…');
+    expect(titles).toContain('Extract interface…');
+    expect(titles).toContain('Generate constructor…');
+    expect(titles).toContain('Implement missing methods…');
+    expect(titles.filter((title) => title === 'Safe delete')).toHaveLength(1);
+    expect(titles.filter((title) => title === 'Rename…')).toHaveLength(1);
+  });
+
+  test('an interface name: the narrowed search first, the full one right after', () => {
+    const titles = titlesAt(CHECKOUT, CHECKOUT.indexOf('interface Payer') + 'interface '.length + 1);
+
+    expect(titles.slice(0, 2)).toEqual(['Find implementations', 'Find all usages']);
+    expect(titles).not.toContain('Extract interface…');
+  });
+
+  test('a method name: everything a member allows', () => {
+    const titles = titlesAt(CHECKOUT, CHECKOUT.indexOf('function pay(int $amount): void\n    {') + 'function '.length + 1);
+
+    expect(titles).toContain('Find usages');
+    expect(titles).toContain('Change signature…');
+    expect(titles).toContain('Move method to another class…');
+    expect(titles).toContain('Pull member up…');
+    expect(titles).toContain('Safe delete');
+  });
+
+  test('a call site: what can be done from there, and nothing that needs a declaration', () => {
+    const titles = titlesAt(CHECKOUT, CHECKOUT.indexOf('$this->pay(') + '$this->'.length + 1);
+
+    expect(titles).toContain('Find usages');
+    expect(titles).toContain('Rename…');
+    expect(titles).toContain('Inline method');
+    expect(titles).toContain('Change signature…');
+    expect(titles).not.toContain('Move method to another class…');
+    expect(titles).not.toContain('Pull member up…');
+    expect(titles).not.toContain('Safe delete');
+  });
+
+  test('a local variable: renamed, never deleted as a member', () => {
+    const titles = titlesAt(CART, CART.indexOf("$name = 'cart';") + 2);
+
+    expect(titles.filter((title) => title === 'Rename…')).toHaveLength(1);
+    expect(titles).not.toContain('Safe delete');
+    expect(titles).not.toContain('Find usages');
   });
 });
