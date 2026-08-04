@@ -11,6 +11,7 @@ import { MixinDefinitionProvider, MixinHoverProvider } from './mixinMemberProvid
 import { UsagesCodeActionProvider } from './codeActions';
 import { findImplementations } from './findImplementations';
 import { showUsages } from './findUsages';
+import { showMemberUsages } from './findMemberUsages';
 import { InheritanceResolver } from './inheritanceResolver';
 import { PathCompletionProvider } from './paths/pathCompletionProvider';
 import { PathLinkProvider } from './paths/pathLinkProvider';
@@ -133,6 +134,7 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     vscode.commands.registerCommand('phpToolbox.inheritedSymbols', show),
     vscode.commands.registerCommand('phpToolbox.findUsages', showUsages),
+    vscode.commands.registerCommand('phpToolbox.findMemberUsages', showMemberUsages),
     vscode.commands.registerCommand('phpToolbox.findImplementations', findImplementations),
     vscode.commands.registerCommand('phpToolbox.moveClass', moveClass),
     vscode.commands.registerCommand('phpToolbox.renameType', renameType),

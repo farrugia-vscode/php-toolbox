@@ -89,6 +89,10 @@ where Intelephense already offers the same list.
 two refactorings, lists what the workspace does with a type, grouped by intent: implemented by, extended by, used as a
 trait, instantiated, injected, accessed statically.
 
+On a method, a property or a constant, the same action answers with call sites instead —
+what actually calls that public method. Mentions whose receiver could not be typed are
+listed apart rather than dropped: missing a real call is worse than showing one too many.
+
 ### Refactorings, on `Alt+Enter`
 
 Every refactoring below is offered as a code action where it applies, so the way in is

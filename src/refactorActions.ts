@@ -178,6 +178,7 @@ export class RefactorCodeActionProvider implements vscode.CodeActionProvider {
     const file = indexedFile(document.uri, text);
 
     if (isOnMemberName(file, start)) {
+      actions.push(action('Find usages', 'phpToolbox.findMemberUsages', vscode.CodeActionKind.Empty));
       actions.push(action('Rename…', 'phpToolbox.renameMember', REWRITE));
     } else if (localAt(scopes, text, start)) {
       actions.push(action('Rename…', 'phpToolbox.renameLocal', REWRITE));

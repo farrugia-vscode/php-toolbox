@@ -50,6 +50,11 @@
         "category": "PHP"
       },
       {
+        "command": "phpToolbox.findMemberUsages",
+        "title": "Find member usages",
+        "category": "PHP"
+      },
+      {
         "command": "phpToolbox.moveClass",
         "title": "Move class…",
         "category": "PHP"
@@ -174,6 +179,10 @@
         },
         {
           "command": "phpToolbox.findUsages",
+          "when": "editorLangId == php"
+        },
+        {
+          "command": "phpToolbox.findMemberUsages",
           "when": "editorLangId == php"
         },
         {
