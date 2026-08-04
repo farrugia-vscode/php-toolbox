@@ -1,11 +1,17 @@
 import * as vscode from 'vscode';
 import type { Definition } from './types';
 
+/** A `@mixin` target. Template arguments, when written, are dropped with the name kept. */
+export interface Mixin {
+  name: string;
+}
+
 /** Parent/interface/trait names referenced by a class, plus its header line range. */
 export interface TypeReferences {
   names: Set<string>;
   headerRange: [number, number];
   traitNames: Set<string>;
+  mixins: Mixin[];
 }
 
 /** Extracts `extends`/`implements` targets and `use` traits declared by a class. */
@@ -19,7 +25,8 @@ export function parseTypeReferences(
 
   // `@mixin` brings in members just like inheritance does, and Laravel leans on it
   // heavily (ide-helper, Eloquent builders). The docblock sits above the class.
-  const docStart = collectMixins(document, startLine, names);
+  const { docStart, mixins } = collectMixins(document, startLine);
+  mixins.forEach((mixin) => names.add(mixin.name));
 
   // Header: everything from the class name line up to the opening brace.
   let header = '';
@@ -63,7 +70,7 @@ export function parseTypeReferences(
     }
   }
 
-  return { names, headerRange: [docStart, headerEndLine], traitNames };
+  return { names, headerRange: [docStart, headerEndLine], traitNames, mixins };
 }
 
 /**
@@ -98,25 +105,25 @@ export function docblockRange(
 function collectMixins(
   document: vscode.TextDocument,
   startLine: number,
-  names: Set<string>,
-): number {
+): { docStart: number; mixins: Mixin[] } {
   const range = docblockRange(document, startLine);
 
   if (range === null) {
-    return startLine;
+    return { docStart: startLine, mixins: [] };
   }
 
   const [docStart, docEnd] = range;
+  const mixins: Mixin[] = [];
 
   for (let current = docStart; current <= docEnd; current++) {
     const match = /@mixin\s+\\?([\w\\]+)/.exec(document.lineAt(current).text);
 
     if (match) {
-      names.add(match[1]);
+      mixins.push({ name: match[1] });
     }
   }
 
-  return docStart;
+  return { docStart, mixins };
 }
 
 /** A member declared only in the docblock: `@property`, `@method` and friends. */

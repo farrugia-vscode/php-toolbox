@@ -1,35 +1,10 @@
 import * as vscode from 'vscode';
-import type { Definition, Member } from './types';
-import { CLASS_KINDS, MEMBER_KINDS, findClassLikeSymbols } from './classSymbols';
-import {
-  docblockRange,
-  findWordPosition,
-  normalizeDefinition,
-  parseDocblockMembers,
-  parseTypeReferences,
-} from './typeReferences';
+import type { Member } from './types';
+import { MEMBER_KINDS } from './classSymbols';
+import { resolveTypeName } from './classResolution';
+import { docblockRange, parseDocblockMembers, parseTypeReferences } from './typeReferences';
 
 const MAX_DEPTH = 25;
-
-/**
- * Falls back to the workspace symbol index: definition providers usually ignore names
- * written inside a docblock, which is exactly where `@mixin` targets appear.
- */
-async function findClassByName(name: string): Promise<Definition | null> {
-  const shortName = name.split('\\').pop() ?? name;
-
-  const symbols =
-    (await vscode.commands.executeCommand<vscode.SymbolInformation[]>(
-      'vscode.executeWorkspaceSymbolProvider',
-      shortName,
-    )) ?? [];
-
-  const match = symbols.find(
-    (symbol) => CLASS_KINDS.has(symbol.kind) && (symbol.name.split('\\').pop() ?? '') === shortName,
-  );
-
-  return match ? { uri: match.location.uri, position: match.location.range.start } : null;
-}
 
 /**
  * Walks a class's inheritance graph (parents, interfaces, traits) and collects
@@ -61,7 +36,7 @@ export class InheritanceResolver {
     const { names } = parseTypeReferences(document, classSymbol);
 
     for (const name of names) {
-      await this.collectParent(uri, document, classSymbol, name, depth);
+      await this.collectParent(document, classSymbol, name, depth);
     }
   }
 
@@ -106,7 +81,6 @@ export class InheritanceResolver {
   }
 
   private async collectParent(
-    uri: vscode.Uri,
     document: vscode.TextDocument,
     classSymbol: vscode.DocumentSymbol,
     name: string,
@@ -116,32 +90,10 @@ export class InheritanceResolver {
     const classLine = classSymbol.selectionRange.start.line;
     const fromLine = docblockRange(document, classLine)?.[0] ?? classLine;
 
-    const namePosition = findWordPosition(document, name, fromLine, classSymbol.range.end.line);
-    if (!namePosition) {
-      return;
-    }
-    const definition =
-      normalizeDefinition(
-        await vscode.commands.executeCommand<Array<vscode.Location | vscode.LocationLink>>(
-          'vscode.executeDefinitionProvider',
-          uri,
-          namePosition,
-        ),
-      ) ?? (await findClassByName(name));
-    if (!definition) {
-      return;
-    }
-    const parentSymbols = findClassLikeSymbols(
-      (await vscode.commands.executeCommand<vscode.DocumentSymbol[]>(
-        'vscode.executeDocumentSymbolProvider',
-        definition.uri,
-      )) ?? [],
-    );
-    const parentSymbol =
-      parentSymbols.find((symbol) => symbol.range.contains(definition.position)) ??
-      parentSymbols.find((symbol) => symbol.name.split('\\').pop() === name.split('\\').pop());
-    if (parentSymbol) {
-      await this.collect(definition.uri, parentSymbol, depth + 1);
+    const parent = await resolveTypeName(document, name, fromLine, classSymbol.range.end.line);
+
+    if (parent) {
+      await this.collect(parent.uri, parent.symbol, depth + 1);
     }
   }
 }

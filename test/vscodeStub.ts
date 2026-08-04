@@ -70,6 +70,19 @@ export const workspace = {
   textDocuments: [] as Array<{ isDirty: boolean; uri: Uri; getText(): string }>,
 };
 
+/** Only the kinds the extension names; the numbers match the real API. */
+export const SymbolKind = {
+  Class: 4,
+  Method: 5,
+  Property: 6,
+  Field: 7,
+  Constant: 13,
+  Interface: 10,
+  Struct: 22,
+  Enum: 9,
+  EnumMember: 21,
+};
+
 export const window = {
   showWarningMessage: (message: string): void => console.warn(message),
 };
