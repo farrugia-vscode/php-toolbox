@@ -1,6 +1,16 @@
 import * as vscode from 'vscode';
 import { directoryOf, typedPath } from './pathLiterals';
 
+/**
+ * Path Intellisense completes the same relative paths, in every language. Where it
+ * answers, staying quiet avoids offering the same file names twice; a path written from
+ * the root of the file's directory (`__DIR__ . '/web/'`) is left to us, since it resolves
+ * those against the workspace root and finds nothing.
+ */
+function isCoveredByPathIntellisense(prefix: string): boolean {
+  return !prefix.startsWith('/') && vscode.extensions.getExtension('christian-kohler.path-intellisense') !== undefined;
+}
+
 const RETRIGGER: vscode.Command = {
   command: 'editor.action.triggerSuggest',
   title: 'Suggest',
@@ -42,7 +52,7 @@ export class PathCompletionProvider implements vscode.CompletionItemProvider {
   ): Promise<vscode.CompletionItem[] | undefined> {
     const typed = typedPath(document.lineAt(position.line).text.slice(0, position.character));
 
-    if (!typed) {
+    if (!typed || isCoveredByPathIntellisense(typed.prefix)) {
       return undefined;
     }
 
