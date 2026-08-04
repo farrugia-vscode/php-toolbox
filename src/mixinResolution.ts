@@ -159,7 +159,7 @@ async function enclosingClass(
 }
 
 /** The class a member of `owner` holds, read off its declared or annotated type. */
-async function typeOfMember(owner: ResolvedClass, name: string): Promise<ResolvedClass | null> {
+export async function typeOfMember(owner: ResolvedClass, name: string): Promise<ResolvedClass | null> {
   const members = await membersOf(owner);
   const member = members.get(`$${name}`) ?? members.get(name);
   const className = member ? classNameOf(member.detail) : null;
@@ -194,7 +194,7 @@ async function resolveReceiver(
  * the closest assignment above says. The fallback is what carries a model attribute the
  * server dropped with its `@mixin`.
  */
-async function resolveVariable(
+export async function resolveVariable(
   document: vscode.TextDocument,
   position: vscode.Position,
   name: string,
