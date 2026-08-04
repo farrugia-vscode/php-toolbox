@@ -5,6 +5,7 @@ import { indexedFile, type IndexedFile } from './php/phpIndex';
 import { scopeAt, type FileScopes, type FunctionScope } from './php/scopes';
 import { toWorkspaceEdit } from './refactor/apply';
 import { sameOccurrences, targetExpression } from './refactor/extractExpression';
+import { localAt } from './refactor/renameLocal';
 
 /**
  * Opens the whole code action menu, groups and all.
@@ -178,6 +179,8 @@ export class RefactorCodeActionProvider implements vscode.CodeActionProvider {
 
     if (isOnMemberName(file, start)) {
       actions.push(action('Rename…', 'phpToolbox.renameMember', REWRITE));
+    } else if (localAt(scopes, text, start)) {
+      actions.push(action('Rename…', 'phpToolbox.renameLocal', REWRITE));
     }
 
     if (isOnAbstractMethod(file, start)) {

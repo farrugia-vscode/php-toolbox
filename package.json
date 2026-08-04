@@ -25,8 +25,18 @@
   "contributes": {
     "commands": [
       {
+        "command": "phpToolbox.rename",
+        "title": "Rename…",
+        "category": "PHP"
+      },
+      {
         "command": "phpToolbox.renameType",
         "title": "Rename class, interface or trait…",
+        "category": "PHP"
+      },
+      {
+        "command": "phpToolbox.renameLocal",
+        "title": "Rename variable or parameter…",
         "category": "PHP"
       },
       {
@@ -143,7 +153,15 @@
     "menus": {
       "commandPalette": [
         {
+          "command": "phpToolbox.rename",
+          "when": "editorLangId == php"
+        },
+        {
           "command": "phpToolbox.renameType",
+          "when": "editorLangId == php"
+        },
+        {
+          "command": "phpToolbox.renameLocal",
           "when": "editorLangId == php"
         },
         {
@@ -234,7 +252,7 @@
     },
     "keybindings": [
       {
-        "command": "phpToolbox.renameType",
+        "command": "phpToolbox.rename",
         "key": "shift+f6",
         "when": "editorLangId == php && editorTextFocus"
       },
