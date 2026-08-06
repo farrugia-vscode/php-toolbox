@@ -34,6 +34,7 @@ import { changeSignature, introduceParameter } from './refactor/signatureCommand
 import { PhpCodeActionProvider, showRefactorings } from './menu/provider';
 import type { Member } from './types';
 import { warmIndex } from './workspaceIndex';
+import { registerUnusedMembers } from './unusedMembers';
 
 interface MemberQuickPickItem extends vscode.QuickPickItem {
   member?: Member;
@@ -171,6 +172,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('phpToolbox.pushMemberDown', pushMemberDown),
     vscode.languages.registerRenameProvider({ scheme: 'file', language: 'php' }, new PhpRenameProvider()),
     registerFileMoveSync(),
+    registerUnusedMembers(),
     composer,
     vscode.languages.registerCodeActionsProvider(
       { scheme: 'file', language: 'php' },

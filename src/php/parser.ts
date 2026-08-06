@@ -168,6 +168,7 @@ export function parseFile(text: string): ParsedFile {
           className,
           visibility,
           isStatic: false,
+          hasAttributes: (argument.attrGroups ?? []).length > 0,
           type: param.type,
           nameStart: written + 1,
           nameEnd: written + 1 + param.name.length,

@@ -23,6 +23,16 @@
     "test": "bun test"
   },
   "contributes": {
+    "configuration": {
+      "title": "PHP Toolbox",
+      "properties": {
+        "phpToolbox.unusedMembers.enabled": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Grey out the private members no line of the file uses. Read from the file alone, so a member only reached in a way nothing can follow — a name built at runtime, a trait calling into the class — may be greyed out while still being used."
+        }
+      }
+    },
     "commands": [
       {
         "command": "phpToolbox.rename",

@@ -29,6 +29,8 @@ export interface MethodDeclaration {
   visibility: Visibility;
   isStatic: boolean;
   isAbstract: boolean;
+  /** An `#[Attribute]` is written above it, so something may reach it by reflection. */
+  hasAttributes: boolean;
   params: ParamInfo[];
   returnType: string | null;
   nameStart: number;
@@ -49,6 +51,7 @@ export interface PropertyDeclaration {
   className: string;
   visibility: Visibility;
   isStatic: boolean;
+  hasAttributes: boolean;
   type: string | null;
   nameStart: number;
   nameEnd: number;
@@ -60,6 +63,7 @@ export interface ClassConstant {
   name: string;
   className: string;
   visibility: Visibility;
+  hasAttributes: boolean;
   nameStart: number;
   nameEnd: number;
   start: number;
@@ -110,6 +114,10 @@ function visibilityOf(node: any): Visibility {
   const visibility = node.visibility;
 
   return visibility === 'protected' || visibility === 'private' ? visibility : 'public';
+}
+
+function hasAttributes(node: any): boolean {
+  return (node?.attrGroups ?? []).length > 0;
 }
 
 /** Types are taken from the source rather than rebuilt: unions and intersections come free. */
@@ -193,6 +201,7 @@ export function methodFrom(node: any, text: string, className: string): MethodDe
     visibility: visibilityOf(node),
     isStatic: node.isStatic === true,
     isAbstract: node.isAbstract === true || node.body === null,
+    hasAttributes: hasAttributes(node),
     params: (node.arguments ?? []).map((argument: any) => paramFrom(argument, text)),
     returnType: typeText(node.type, text, node.nullable === true),
     nameStart,
@@ -315,6 +324,7 @@ export function propertyFrom(node: any, text: string, className: string, group: 
     className,
     visibility: visibilityOf(group),
     isStatic: group.isStatic === true,
+    hasAttributes: hasAttributes(group) || hasAttributes(node),
     type: typeText(node.type, text, node.nullable === true),
     // The `$` is part of the written name, but not of the name a rename replaces.
     nameStart: text[nameStart] === '$' ? nameStart + 1 : nameStart,
@@ -332,6 +342,7 @@ export function constantFrom(node: any, text: string, className: string, group: 
     name,
     className,
     visibility: visibilityOf(group),
+    hasAttributes: hasAttributes(group) || hasAttributes(node),
     nameStart,
     nameEnd,
     start: group.loc.start.offset,
