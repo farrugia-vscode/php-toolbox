@@ -1,7 +1,9 @@
 import { nodeChain } from '../php/nodeIndex';
 import type { TextEdit } from '../refactor/editSet';
 import { indentAt, indentUnit } from '../refactor/textLayout';
-import { captureInClosure, closureToArrow } from './closures';
+import { captureInClosure, closureToArrow, closureToCallable } from './closures';
+import { ifToMatch, switchToMatch } from './matchExpression';
+import { nativeTypesFromDocblock } from './nativeTypes';
 import { negate } from './negation';
 import { textOf } from './nodeText';
 import { documentMethod } from './phpdoc';
@@ -130,13 +132,17 @@ const FINDERS: Finder[] = [
   invertIf,
   mergeNestedIf,
   splitIf,
+  ifToMatch,
+  switchToMatch,
   closureToArrow,
+  closureToCallable,
   captureInClosure,
   concatToInterpolation,
   concatToSprintf,
   interpolationToConcat,
   interpolationToSprintf,
   documentMethod,
+  nativeTypesFromDocblock,
   addStrictTypes,
   (text, _chain, offset) => promoteParameter(text, offset),
 ];

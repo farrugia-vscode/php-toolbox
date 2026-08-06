@@ -148,6 +148,96 @@ export function captureInClosure(text: string, chain: any[]): Intention | null {
   };
 }
 
+/** The single call the body is made of, or null when the body does more than forward. */
+function forwardedCall(node: any): any | null {
+  if (node.kind === 'arrowfunc') {
+    return node.body?.kind === 'call' ? node.body : null;
+  }
+
+  const statements = node.body?.children ?? [];
+  const only = statements.length === 1 ? statements[0] : null;
+
+  return only?.kind === 'return' && only.expr?.kind === 'call' ? only.expr : null;
+}
+
+/** True when the call passes the parameters along, all of them, in the order they came. */
+function forwardsParameters(node: any, call: any): boolean {
+  const params = node.arguments ?? [];
+  const args = call.arguments ?? [];
+
+  if (params.length !== args.length) {
+    return false;
+  }
+
+  // A default, a variadic or a by-reference parameter has no place in the callable syntax.
+  if (params.some((param: any) => param.value || param.variadic === true || param.byref === true)) {
+    return false;
+  }
+
+  return params.every((param: any, index: number) => {
+    const argument = args[index];
+    const name = typeof param.name === 'string' ? param.name : param.name?.name;
+
+    return argument?.kind === 'variable' && argument.name === name;
+  });
+}
+
+/** How the called thing is named, or null when `(...)` cannot be written on it. */
+function callableTarget(text: string, call: any): string | null {
+  const target = call.what;
+
+  // `?->` has no callable form, and a name computed at runtime cannot be written down.
+  if (target?.kind === 'nullsafepropertylookup') {
+    return null;
+  }
+
+  const isNamedMember =
+    (target?.kind === 'propertylookup' || target?.kind === 'staticlookup') &&
+    (target.offset?.kind === 'identifier' || target.offset?.kind === 'name');
+
+  if (target?.kind !== 'name' && !isNamedMember) {
+    return null;
+  }
+
+  return textOf(text, target);
+}
+
+/**
+ * A closure that only passes its parameters to one call is that call, referenced.
+ *
+ * `$this->render(...)` says what the closure said with none of the plumbing, and PHP builds
+ * the same Closure object from it — bound to the same `$this`, capturing the same receiver.
+ */
+export function closureToCallable(text: string, chain: any[], offset: number): Intention | null {
+  const node = chain.find((candidate) => candidate.kind === 'closure' || candidate.kind === 'arrowfunc');
+
+  if (!node?.body?.loc || offset > node.body.loc.start.offset) {
+    return null;
+  }
+
+  const call = forwardedCall(node);
+
+  if (!call || !forwardsParameters(node, call)) {
+    return null;
+  }
+
+  // Spread and named arguments are counted as parameters above, but written differently.
+  if ((call.arguments ?? []).some((argument: any) => argument.kind === 'namedargument' || argument.unpack === true)) {
+    return null;
+  }
+
+  const target = callableTarget(text, call);
+
+  if (!target) {
+    return null;
+  }
+
+  return {
+    title: 'Convert to first-class callable',
+    edits: [{ start: node.loc.start.offset, end: node.loc.end.offset, text: `${target}(...)` }],
+  };
+}
+
 /** A closure whose whole body is a `return` is an arrow function waiting to happen. */
 export function closureToArrow(text: string, chain: any[]): Intention | null {
   const node = closureNode(chain);

@@ -79,3 +79,51 @@ describe('turning a closure into an arrow function', () => {
     expect(titles(COMMAND, '$handler->execute')).not.toContain('Convert to arrow function');
   });
 });
+
+describe('turning a forwarding closure into a first-class callable', () => {
+  test('names the method an arrow function only forwards to', () => {
+    const source = `<?php\n$rows = array_map(fn (int $row): string => $this->render($row), $rows);\n`;
+
+    expect(apply(source, 'fn (int $row)', 'Convert to first-class callable')).toContain(
+      '$rows = array_map($this->render(...), $rows);',
+    );
+  });
+
+  test('works on a closure body that only returns the call', () => {
+    const source = `<?php\n$lengths = array_map(function (string $value) {\n    return strlen($value);\n}, $values);\n`;
+
+    expect(apply(source, 'function (string $value)', 'Convert to first-class callable')).toContain(
+      '$lengths = array_map(strlen(...), $values);',
+    );
+  });
+
+  test('keeps a static call as it was written', () => {
+    const source = `<?php\n$ids = array_map(fn ($model) => Identifier::of($model), $models);\n`;
+
+    expect(apply(source, 'fn ($model)', 'Convert to first-class callable')).toContain('Identifier::of(...)');
+  });
+
+  test('refused when the body does something to the arguments', () => {
+    const source = `<?php\n$totals = array_map(fn (int $value) => $this->round($value + 1), $values);\n`;
+
+    expect(titles(source, 'fn (int $value)')).not.toContain('Convert to first-class callable');
+  });
+
+  test('refused when the parameters and the arguments do not line up', () => {
+    const source = `<?php\n$totals = array_map(fn ($value, $key) => $this->render($key), $values);\n`;
+
+    expect(titles(source, 'fn ($value, $key)')).not.toContain('Convert to first-class callable');
+  });
+
+  test('refused on a nullsafe call, which has no callable form', () => {
+    const source = `<?php\n$rows = array_map(fn ($row) => $this->renderer?->render($row), $rows);\n`;
+
+    expect(titles(source, 'fn ($row)')).not.toContain('Convert to first-class callable');
+  });
+
+  test('refused on a parameter carrying a default the callable would drop', () => {
+    const source = `<?php\n$rows = array_map(fn ($row = 1) => $this->render($row), $rows);\n`;
+
+    expect(titles(source, 'fn ($row = 1)')).not.toContain('Convert to first-class callable');
+  });
+});
