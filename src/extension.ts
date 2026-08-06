@@ -18,7 +18,10 @@ import { forgetPsr4Roots } from './php/psr4';
 import { extractExpression, extractMethod } from './refactor/extractCommands';
 import { extractConstantToClass } from './refactor/extractConstantTo';
 import { extractInterface } from './refactor/extractInterface';
-import { generateConstructor, implementMissing } from './refactor/generate';
+import { extractTrait } from './refactor/extractTrait';
+import { generateConstructor, implementMissing, overrideMethod } from './refactor/generate';
+import { goToTest } from './refactor/goToTest';
+import { sortMembers } from './refactor/sortMembers';
 import { inlineMethod, inlineVariable } from './refactor/inlineCommands';
 import { moveMethod } from './refactor/moveMethod';
 import { copyClass, moveClass, registerFileMoveSync } from './refactor/moveNamespace';
@@ -159,7 +162,11 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('phpToolbox.extractInterface', extractInterface),
     vscode.commands.registerCommand('phpToolbox.implementMissing', implementMissing),
     vscode.commands.registerCommand('phpToolbox.generateConstructor', generateConstructor),
+    vscode.commands.registerCommand('phpToolbox.extractTrait', extractTrait),
     vscode.commands.registerCommand('phpToolbox.moveMethod', moveMethod),
+    vscode.commands.registerCommand('phpToolbox.overrideMethod', overrideMethod),
+    vscode.commands.registerCommand('phpToolbox.sortMembers', sortMembers),
+    vscode.commands.registerCommand('phpToolbox.goToTest', goToTest),
     vscode.commands.registerCommand('phpToolbox.pullMemberUp', pullMemberUp),
     vscode.commands.registerCommand('phpToolbox.pushMemberDown', pushMemberDown),
     vscode.languages.registerRenameProvider({ scheme: 'file', language: 'php' }, new PhpRenameProvider()),

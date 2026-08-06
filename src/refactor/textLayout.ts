@@ -74,3 +74,13 @@ export function afterLine(text: string, offset: number): number {
 
   return end === text.length ? end : end + 1;
 }
+
+/**
+ * The whole of a member: its declaration, the docblock above it and the line it ends on.
+ *
+ * A member moved without its docblock leaves the comment behind, attached to whatever ends
+ * up in its place.
+ */
+export function memberSpan(text: string, start: number, end: number): { start: number; end: number } {
+  return { start: lineStartOf(text, docblockStart(text, start)), end: afterLine(text, end) };
+}

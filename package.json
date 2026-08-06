@@ -168,6 +168,26 @@
         },
         {
           "command": "phpToolbox.renameType",
+      },
+      {
+        "command": "phpToolbox.extractTrait",
+        "title": "Extract trait…",
+        "category": "PHP"
+      },
+      {
+        "command": "phpToolbox.overrideMethod",
+        "title": "Override method…",
+        "category": "PHP"
+      },
+      {
+        "command": "phpToolbox.sortMembers",
+        "title": "Sort members",
+        "category": "PHP"
+      },
+      {
+        "command": "phpToolbox.goToTest",
+        "title": "Go to test",
+        "category": "PHP"
           "when": "editorLangId == php"
         },
         {
@@ -240,6 +260,22 @@
         },
         {
           "command": "phpToolbox.renameMember",
+        {
+          "command": "phpToolbox.extractTrait",
+          "when": "editorLangId == php"
+        },
+        {
+          "command": "phpToolbox.overrideMethod",
+          "when": "editorLangId == php"
+        },
+        {
+          "command": "phpToolbox.sortMembers",
+          "when": "editorLangId == php"
+        },
+        {
+          "command": "phpToolbox.goToTest",
+          "when": "editorLangId == php"
+        },
           "when": "editorLangId == php"
         },
         {

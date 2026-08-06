@@ -6,7 +6,7 @@ import { confirm } from './apply';
 import { classAt, memberIndent, memberInsertOffset } from './classEdits';
 import { EditSet } from './editSet';
 import { importEdit, typesUsedIn } from './imports';
-import { afterLine, blankLineBefore, docblockStart, indentAt, lineStartOf, reindent } from './textLayout';
+import { blankLineBefore, indentAt, memberSpan, reindent } from './textLayout';
 
 type MemberKind = 'method' | 'property' | 'constant';
 
@@ -21,11 +21,6 @@ interface Member {
 interface ClassLocation {
   file: IndexedFile;
   declaration: Declaration;
-}
-
-/** Grows a declaration to the docblock above it, which belongs to the member. */
-function withDocblock(text: string, start: number, end: number): Span {
-  return { start: lineStartOf(text, docblockStart(text, start)), end: afterLine(text, end) };
 }
 
 function memberAt(file: IndexedFile, offset: number): Member | null {
@@ -43,7 +38,7 @@ function memberAt(file: IndexedFile, offset: number): Member | null {
 
   const found = candidates
     .filter((candidate) => candidate.className === owner.fqn)
-    .map((candidate) => ({ ...candidate, span: withDocblock(file.text, candidate.start, candidate.end) }))
+    .map((candidate) => ({ ...candidate, span: memberSpan(file.text, candidate.start, candidate.end) }))
     .filter((candidate) => candidate.span.start <= offset && candidate.span.end >= offset)
     .sort((first, second) => first.span.end - first.span.start - (second.span.end - second.span.start))[0];
 

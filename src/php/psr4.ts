@@ -1,23 +1,35 @@
 import * as vscode from 'vscode';
 
 /** One `"App\\": "app/"` entry of a composer autoload map. */
-interface Psr4Root {
+export interface Psr4Root {
   prefix: string;
   directory: vscode.Uri;
+  /** Declared under `autoload-dev`, which is where the tests of a project live. */
+  isDev: boolean;
+}
+
+/** A composer.json of the workspace, parsed. */
+export interface ComposerProject {
+  folder: vscode.Uri;
+  manifest: any;
 }
 
 let roots: Psr4Root[] | null = null;
+let projects: ComposerProject[] | null = null;
 
 function normalizePrefix(prefix: string): string {
   return prefix.replace(/\\+$/, '');
 }
 
 function readRoots(composer: any, folder: vscode.Uri): Psr4Root[] {
-  const sections = [composer?.autoload?.['psr-4'], composer?.['autoload-dev']?.['psr-4']];
+  const sections = [
+    { map: composer?.autoload?.['psr-4'], isDev: false },
+    { map: composer?.['autoload-dev']?.['psr-4'], isDev: true },
+  ];
   const found: Psr4Root[] = [];
 
-  for (const section of sections) {
-    for (const [prefix, target] of Object.entries(section ?? {})) {
+  for (const { map, isDev } of sections) {
+    for (const [prefix, target] of Object.entries(map ?? {})) {
       const directories = Array.isArray(target) ? target : [target];
 
       directories.forEach((directory) => {
@@ -25,6 +37,7 @@ function readRoots(composer: any, folder: vscode.Uri): Psr4Root[] {
           found.push({
             prefix: normalizePrefix(prefix),
             directory: vscode.Uri.joinPath(folder, ...directory.split('/').filter(Boolean)),
+            isDev,
           });
         }
       });
@@ -32,6 +45,28 @@ function readRoots(composer: any, folder: vscode.Uri): Psr4Root[] {
   }
 
   return found;
+}
+
+/** Every composer.json of the workspace, parsed once. */
+export async function getComposerProjects(): Promise<ComposerProject[]> {
+  if (projects) {
+    return projects;
+  }
+
+  const found: ComposerProject[] = [];
+
+  for (const folder of vscode.workspace.workspaceFolders ?? []) {
+    try {
+      const raw = await vscode.workspace.fs.readFile(vscode.Uri.joinPath(folder.uri, 'composer.json'));
+
+      found.push({ folder: folder.uri, manifest: JSON.parse(Buffer.from(raw).toString('utf8')) });
+    } catch {
+      continue;
+    }
+  }
+
+  projects = found;
+  return projects;
 }
 
 /**
@@ -43,16 +78,9 @@ export async function getPsr4Roots(): Promise<Psr4Root[]> {
     return roots;
   }
 
-  const found: Psr4Root[] = [];
-
-  for (const folder of vscode.workspace.workspaceFolders ?? []) {
-    try {
-      const raw = await vscode.workspace.fs.readFile(vscode.Uri.joinPath(folder.uri, 'composer.json'));
-      found.push(...readRoots(JSON.parse(Buffer.from(raw).toString('utf8')), folder.uri));
-    } catch {
-      continue;
-    }
-  }
+  const found = (await getComposerProjects()).flatMap((project) =>
+    readRoots(project.manifest, project.folder),
+  );
 
   // Longest directory first: `app/` and `app/Domain/` can both match a path.
   roots = found.sort((first, second) => second.directory.path.length - first.directory.path.length);
@@ -61,6 +89,7 @@ export async function getPsr4Roots(): Promise<Psr4Root[]> {
 
 export function forgetPsr4Roots(): void {
   roots = null;
+  projects = null;
 }
 
 /** The namespace a file at `uri` should declare, according to composer. */

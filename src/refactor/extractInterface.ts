@@ -5,6 +5,7 @@ import { directoryForNamespace } from '../php/psr4';
 import { askName } from './apply';
 import { classAt } from './classEdits';
 import { importEdit, typesUsedIn } from './imports';
+import { phpFileContents } from './newFile';
 import { indentUnit } from './textLayout';
 
 /** Methods worth publishing: the constructor and the magic ones are not part of a contract. */
@@ -27,20 +28,12 @@ function signatureOf(file: IndexedFile, method: MethodDeclaration): string {
 }
 
 function fileContents(namespace: string, name: string, signatures: string[], imports: string, unit: string): string {
-  return [
-    '<?php',
-    '',
-    `namespace ${namespace};`,
-    '',
+  return phpFileContents({
+    namespace,
     imports,
-    `interface ${name}`,
-    '{',
-    signatures.map((signature) => `${unit}${signature}`).join('\n\n'),
-    '}',
-    '',
-  ]
-    .filter((line, index) => line !== '' || index !== 4 || imports !== '')
-    .join('\n');
+    header: `interface ${name}`,
+    body: signatures.map((signature) => `${unit}${signature}`).join('\n\n'),
+  });
 }
 
 /** Adds the interface to what the class already implements. */

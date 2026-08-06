@@ -92,6 +92,12 @@ export const RULES: Rule[] = [
     command: 'phpToolbox.inlineMethod',
     kind: INLINE,
     when: (context) => onMethodName(context) || onMemberUsage(context),
+  {
+    title: 'Extract trait…',
+    command: 'phpToolbox.extractTrait',
+    kind: EXTRACT,
+    when: (context) => context.type?.kind === 'class' || context.type?.kind === 'trait',
+  },
   },
 
   // Rewrite
@@ -139,6 +145,20 @@ export const RULES: Rule[] = [
     when: (context) => onTypeName(context) || onMemberName(context),
   },
 
+  {
+    title: 'Override method…',
+    command: 'phpToolbox.overrideMethod',
+    kind: REWRITE,
+    // Only what is inherited can be overridden, and an interface brings no body to replace.
+    when: (context) =>
+      context.type !== null && (context.type.parent !== null || context.type.traits.length > 0),
+  },
+  {
+    title: 'Sort members',
+    command: 'phpToolbox.sortMembers',
+    kind: REWRITE,
+    when: (context) => context.type !== null && context.type.kind !== 'interface',
+  },
   // Move
   {
     title: 'Move class…',
