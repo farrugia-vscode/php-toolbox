@@ -30,6 +30,46 @@ file to the directory composer's `psr-4` map points at.
 Moving or renaming a PHP file from the explorer does the same thing automatically: the
 namespace and every reference follow the file.
 
+### Go to test, and write the one that is missing
+
+**PHP: Go to test** jumps from a class to its test and back. When the test does not exist yet,
+it offers to write it: the file lands under the test root read from composer's `autoload-dev`,
+in a directory mirroring the namespace of the class, and in the style the project already uses
+— a Pest closure or a PHPUnit class extending the project's own `TestCase` when it has one.
+
+Matching is done on the file name rather than on a class name, because a Pest file declares no
+class at all: `InvoicerTest.php` is the only thing the two styles have in common.
+
+### Write what a line uses and nothing declares
+
+On a call or a property access that resolves to nothing, `Ctrl+.` offers to write it:
+
+| On                            | What it writes                                                         |
+|-------------------------------|------------------------------------------------------------------------|
+| `$this->remind($site, 3)`     | a private method, `Site $site` and `int $limit` read off the arguments |
+| `$invoice->cancel()`          | a public method in `Invoice`, when the receiver is typed               |
+| `$this->attempts = 0`         | a private property, typed from what is assigned to it                  |
+| a class name nothing declares | the file, in the directory composer's `psr-4` map points at            |
+
+Types are read from the arguments as they are written: a literal says its own type, `new
+Message()` names its class, and a variable is followed one hop — to the parameter it came from
+or the property it was read off. A longer chain stays untyped rather than guessed.
+
+Nothing is offered unless the destination is certain. A call on a variable of unknown type
+could reach anything, and writing a method into the wrong class is worse than not offering.
+
+### Members nothing uses, greyed out
+
+Private members no line of the file reaches are reported as hints, so they read like unused
+imports do. Only private ones: anything a subclass or another file could reach cannot be judged
+from one file. The answer is read from the file alone, which is what makes it instant.
+
+A file that builds a member name at runtime, or writes one as a string — `[$this, 'render']`,
+`call_user_func`, `$this->{$name}()` — is left alone entirely rather than reported wrongly. So
+is a member carrying an attribute, which is how a framework reaches one by reflection.
+
+Set `phpToolbox.unusedMembers.enabled` to `false` to turn it off.
+
 ### Go to symbol, including inherited members
 
 **PHP: Go to Symbol (including inherited)** lists the members of the class under the
@@ -113,6 +153,9 @@ They are in the command palette too, under **PHP:**.
 | Pull member up          | the cursor on a member                           | moves it to the parent class or to a trait, imports included                                   |
 | Push member down        | the cursor on a member                           | copies it into the classes that extend it, imports included                                    |
 | Extract interface       | the cursor on a class declaration                | publishes the public methods as an interface next to the class, and implements it              |
+| Extract trait           | the cursor on a class or trait declaration       | moves the chosen members into a new trait, and uses it from the class                          |
+| Override method         | the cursor on a class that inherits              | writes the chosen inherited methods, each calling `parent::` in turn                           |
+| Sort members            | the cursor on a class declaration                | constants, properties, constructor, then methods, each group public first                      |
 | Rename member           | the cursor on a method, property or constant     | renames it everywhere, overrides and promoted constructor parameters included                  |
 | Rename variable         | the cursor on a local variable or a parameter    | renames it in its function, following it into the closures that capture it and into interpolated strings |
 | Move method             | the cursor on a method name                      | moves it to another class, routing the calls through a property or the class name              |
@@ -124,7 +167,17 @@ They are in the command palette too, under **PHP:**.
 Smaller rewrites are offered the same way, and applied straight from the menu:
 
 - invert an `if`, merge it with the one nested inside it, or split a `&&` condition into two
+- rewrite an `if`/`elseif`/`else` chain or a `switch` as a `match`, on the value every branch
+  compares when there is one and under `match (true)` otherwise. Offered only where the two
+  behave the same: every branch has to produce one value the same way, and the chain has to end
+  on an `else` or a `default` — a match with no arm for the value throws, where a chain that
+  runs out of branches does nothing
 - turn a closure that only returns into an arrow function
+- reference the call a closure only forwards to: `fn ($row) => $this->render($row)` is
+  `$this->render(...)`
+- move the types a docblock states into the signature, where the engine enforces them. Only the
+  types a signature can carry move, and a line is dropped only once it says nothing the
+  signature does not — `@param positive-int $count` outlives `int $count`
 - capture the outer variables a closure reads but never declares, in its `use (…)`
 - write the docblock a method is missing, and only the part of it the signature cannot
   carry: the element type of an array, the exceptions the body throws
