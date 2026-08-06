@@ -70,6 +70,11 @@
         "category": "PHP"
       },
       {
+        "command": "phpToolbox.copyClass",
+        "title": "Copy class…",
+        "category": "PHP"
+      },
+      {
         "command": "phpToolbox.extractMethod",
         "title": "Extract method…",
         "category": "PHP"
@@ -77,11 +82,6 @@
       {
         "command": "phpToolbox.extractVariable",
         "title": "Extract variable…",
-        "category": "PHP"
-      },
-      {
-        "command": "phpToolbox.copyClass",
-        "title": "Copy class…",
         "category": "PHP"
       },
       {
@@ -168,16 +168,6 @@
         "command": "phpToolbox.extractConstantToClass",
         "title": "Extract constant to another class…",
         "category": "PHP"
-      }
-    ],
-    "menus": {
-      "commandPalette": [
-        {
-          "command": "phpToolbox.rename",
-          "when": "editorLangId == php"
-        },
-        {
-          "command": "phpToolbox.renameType",
       },
       {
         "command": "phpToolbox.extractTrait",
@@ -198,6 +188,16 @@
         "command": "phpToolbox.goToTest",
         "title": "Go to test",
         "category": "PHP"
+      }
+    ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "phpToolbox.rename",
+          "when": "editorLangId == php"
+        },
+        {
+          "command": "phpToolbox.renameType",
           "when": "editorLangId == php"
         },
         {
@@ -206,6 +206,10 @@
         },
         {
           "command": "phpToolbox.moveClass",
+          "when": "editorLangId == php"
+        },
+        {
+          "command": "phpToolbox.copyClass",
           "when": "editorLangId == php"
         },
         {
@@ -238,10 +242,6 @@
         },
         {
           "command": "phpToolbox.inlineVariable",
-        {
-          "command": "phpToolbox.copyClass",
-          "when": "editorLangId == php"
-        },
           "when": "editorLangId == php"
         },
         {
@@ -261,16 +261,6 @@
           "when": "editorLangId == php"
         },
         {
-          "command": "phpToolbox.pullMemberUp",
-          "when": "editorLangId == php"
-        },
-        {
-          "command": "phpToolbox.pushMemberDown",
-          "when": "editorLangId == php"
-        },
-        {
-          "command": "phpToolbox.renameMember",
-        {
           "command": "phpToolbox.extractTrait",
           "when": "editorLangId == php"
         },
@@ -286,6 +276,16 @@
           "command": "phpToolbox.goToTest",
           "when": "editorLangId == php"
         },
+        {
+          "command": "phpToolbox.pullMemberUp",
+          "when": "editorLangId == php"
+        },
+        {
+          "command": "phpToolbox.pushMemberDown",
+          "when": "editorLangId == php"
+        },
+        {
+          "command": "phpToolbox.renameMember",
           "when": "editorLangId == php"
         },
         {
@@ -311,6 +311,13 @@
         {
           "command": "phpToolbox.extractConstantToClass",
           "when": "editorLangId == php"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "phpToolbox.copyClass",
+          "when": "resourceExtname == .php",
+          "group": "7_modification@1"
         }
       ]
     },
@@ -343,10 +350,3 @@
     "php-parser": "^3.7.0"
   }
 }
-      ],
-      "explorer/context": [
-        {
-          "command": "phpToolbox.copyClass",
-          "when": "resourceExtname == .php",
-          "group": "7_modification@1"
-        }

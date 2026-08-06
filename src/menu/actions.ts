@@ -78,12 +78,25 @@ export const RULES: Rule[] = [
     when: (context) => context.member?.kind === 'method' && context.member.isAbstract,
   },
 
+  {
+    title: 'Go to test',
+    command: 'phpToolbox.goToTest',
+    kind: NAVIGATE,
+    when: onTypeName,
+  },
+
   // Extract
   {
     title: 'Extract interface…',
     command: 'phpToolbox.extractInterface',
     kind: EXTRACT,
     when: (context) => context.type?.kind === 'class' && !context.type.isAbstract,
+  },
+  {
+    title: 'Extract trait…',
+    command: 'phpToolbox.extractTrait',
+    kind: EXTRACT,
+    when: (context) => context.type?.kind === 'class' || context.type?.kind === 'trait',
   },
 
   // Inline
@@ -92,12 +105,6 @@ export const RULES: Rule[] = [
     command: 'phpToolbox.inlineMethod',
     kind: INLINE,
     when: (context) => onMethodName(context) || onMemberUsage(context),
-  {
-    title: 'Extract trait…',
-    command: 'phpToolbox.extractTrait',
-    kind: EXTRACT,
-    when: (context) => context.type?.kind === 'class' || context.type?.kind === 'trait',
-  },
   },
 
   // Rewrite
@@ -139,13 +146,6 @@ export const RULES: Rule[] = [
       context.type !== null && (context.type.parent !== null || context.type.interfaces.length > 0),
   },
   {
-    title: 'Safe delete',
-    command: 'phpToolbox.safeDelete',
-    kind: REWRITE,
-    when: (context) => onTypeName(context) || onMemberName(context),
-  },
-
-  {
     title: 'Override method…',
     command: 'phpToolbox.overrideMethod',
     kind: REWRITE,
@@ -159,10 +159,23 @@ export const RULES: Rule[] = [
     kind: REWRITE,
     when: (context) => context.type !== null && context.type.kind !== 'interface',
   },
+  {
+    title: 'Safe delete',
+    command: 'phpToolbox.safeDelete',
+    kind: REWRITE,
+    when: (context) => onTypeName(context) || onMemberName(context),
+  },
+
   // Move
   {
     title: 'Move class…',
     command: 'phpToolbox.moveClass',
+    kind: MOVE,
+    when: onTypeName,
+  },
+  {
+    title: 'Copy class…',
+    command: 'phpToolbox.copyClass',
     kind: MOVE,
     when: onTypeName,
   },
@@ -193,12 +206,6 @@ export function actionsFor(context: CursorContext): vscode.CodeAction[] {
     const created = new vscode.CodeAction(title, rule.kind);
 
     created.command = { command: rule.command, title, arguments: rule.args?.(context) ?? [] };
-  {
-    title: 'Copy class…',
-    command: 'phpToolbox.copyClass',
-    kind: MOVE,
-    when: onTypeName,
-  },
 
     return created;
   });

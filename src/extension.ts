@@ -15,6 +15,7 @@ import { InheritanceResolver } from './inheritanceResolver';
 import { PathCompletionProvider } from './paths/pathCompletionProvider';
 import { PathLinkProvider } from './paths/pathLinkProvider';
 import { forgetPsr4Roots } from './php/psr4';
+import { CreateFromUsageCodeActionProvider } from './refactor/createFromUsage';
 import { extractExpression, extractMethod } from './refactor/extractCommands';
 import { extractConstantToClass } from './refactor/extractConstantTo';
 import { extractInterface } from './refactor/extractInterface';
@@ -33,8 +34,8 @@ import { safeDelete } from './refactor/safeDelete';
 import { changeSignature, introduceParameter } from './refactor/signatureCommands';
 import { PhpCodeActionProvider, showRefactorings } from './menu/provider';
 import type { Member } from './types';
-import { warmIndex } from './workspaceIndex';
 import { registerUnusedMembers } from './unusedMembers';
+import { warmIndex } from './workspaceIndex';
 
 interface MemberQuickPickItem extends vscode.QuickPickItem {
   member?: Member;
@@ -140,12 +141,12 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('phpToolbox.findMemberUsages', showMemberUsages),
     vscode.commands.registerCommand('phpToolbox.findImplementations', findImplementations),
     vscode.commands.registerCommand('phpToolbox.moveClass', moveClass),
+    vscode.commands.registerCommand('phpToolbox.copyClass', copyClass),
     vscode.commands.registerCommand('phpToolbox.renameType', renameType),
     vscode.commands.registerCommand('phpToolbox.showActions', showRefactorings),
     vscode.commands.registerCommand('phpToolbox.renameMember', renameMember),
     vscode.commands.registerCommand('phpToolbox.renameLocal', renameLocal),
     vscode.commands.registerCommand('phpToolbox.rename', rename),
-    vscode.commands.registerCommand('phpToolbox.copyClass', copyClass),
     vscode.commands.registerCommand('phpToolbox.safeDelete', safeDelete),
     vscode.commands.registerCommand('phpToolbox.extractMethod', extractMethod),
     vscode.commands.registerCommand('phpToolbox.extractVariable', (options?: { isReplacingAll?: boolean }) =>
@@ -161,18 +162,18 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('phpToolbox.changeSignature', changeSignature),
     vscode.commands.registerCommand('phpToolbox.introduceParameter', introduceParameter),
     vscode.commands.registerCommand('phpToolbox.extractInterface', extractInterface),
-    vscode.commands.registerCommand('phpToolbox.implementMissing', implementMissing),
-    vscode.commands.registerCommand('phpToolbox.generateConstructor', generateConstructor),
     vscode.commands.registerCommand('phpToolbox.extractTrait', extractTrait),
-    vscode.commands.registerCommand('phpToolbox.moveMethod', moveMethod),
+    vscode.commands.registerCommand('phpToolbox.implementMissing', implementMissing),
     vscode.commands.registerCommand('phpToolbox.overrideMethod', overrideMethod),
     vscode.commands.registerCommand('phpToolbox.sortMembers', sortMembers),
     vscode.commands.registerCommand('phpToolbox.goToTest', goToTest),
+    vscode.commands.registerCommand('phpToolbox.generateConstructor', generateConstructor),
+    vscode.commands.registerCommand('phpToolbox.moveMethod', moveMethod),
     vscode.commands.registerCommand('phpToolbox.pullMemberUp', pullMemberUp),
     vscode.commands.registerCommand('phpToolbox.pushMemberDown', pushMemberDown),
     vscode.languages.registerRenameProvider({ scheme: 'file', language: 'php' }, new PhpRenameProvider()),
-    registerFileMoveSync(),
     registerUnusedMembers(),
+    registerFileMoveSync(),
     composer,
     vscode.languages.registerCodeActionsProvider(
       { scheme: 'file', language: 'php' },
@@ -192,6 +193,11 @@ export function activate(context: vscode.ExtensionContext): void {
       { scheme: 'file', language: 'php' },
       new ImportCodeActionProvider(),
       { providedCodeActionKinds: ImportCodeActionProvider.providedCodeActionKinds },
+    ),
+    vscode.languages.registerCodeActionsProvider(
+      { scheme: 'file', language: 'php' },
+      new CreateFromUsageCodeActionProvider(),
+      { providedCodeActionKinds: CreateFromUsageCodeActionProvider.providedCodeActionKinds },
     ),
     vscode.languages.registerFoldingRangeProvider(
       { scheme: 'file', language: 'php' },
