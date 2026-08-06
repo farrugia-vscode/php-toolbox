@@ -173,6 +173,12 @@ export function actionsFor(context: CursorContext): vscode.CodeAction[] {
     const created = new vscode.CodeAction(title, rule.kind);
 
     created.command = { command: rule.command, title, arguments: rule.args?.(context) ?? [] };
+  {
+    title: 'Copy class…',
+    command: 'phpToolbox.copyClass',
+    kind: MOVE,
+    when: onTypeName,
+  },
 
     return created;
   });

@@ -21,7 +21,7 @@ import { extractInterface } from './refactor/extractInterface';
 import { generateConstructor, implementMissing } from './refactor/generate';
 import { inlineMethod, inlineVariable } from './refactor/inlineCommands';
 import { moveMethod } from './refactor/moveMethod';
-import { moveClass, registerFileMoveSync } from './refactor/moveNamespace';
+import { copyClass, moveClass, registerFileMoveSync } from './refactor/moveNamespace';
 import { pullMemberUp, pushMemberDown } from './refactor/moveMembers';
 import { PhpRenameProvider, renameType } from './refactor/renameProvider';
 import { renameMember } from './refactor/renameMember';
@@ -141,6 +141,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('phpToolbox.renameMember', renameMember),
     vscode.commands.registerCommand('phpToolbox.renameLocal', renameLocal),
     vscode.commands.registerCommand('phpToolbox.rename', rename),
+    vscode.commands.registerCommand('phpToolbox.copyClass', copyClass),
     vscode.commands.registerCommand('phpToolbox.safeDelete', safeDelete),
     vscode.commands.registerCommand('phpToolbox.extractMethod', extractMethod),
     vscode.commands.registerCommand('phpToolbox.extractVariable', (options?: { isReplacingAll?: boolean }) =>

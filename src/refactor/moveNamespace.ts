@@ -1,6 +1,8 @@
 import * as vscode from 'vscode';
 import { indexedFile } from '../php/phpIndex';
 import { directoryForNamespace, namespaceForFile } from '../php/psr4';
+import { copyTypeEdits } from './copyType';
+import { applyTextEdits } from './plan';
 import { buildTypeRename, namespaceOf, shortNameOf } from './renameType';
 
 const FQN = /^[A-Za-z_]\w*(\\[A-Za-z_]\w*)+$/;
@@ -127,4 +129,85 @@ export async function moveClass(): Promise<void> {
   }
 
   vscode.window.showInformationMessage(`${shortNameOf(newFqn)} — ${referenceCount} edits.`);
+}
+
+/** Whether something already sits at that path — a copy never overwrites. */
+async function exists(uri: vscode.Uri): Promise<boolean> {
+  try {
+    await vscode.workspace.fs.stat(uri);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Duplicates a type under another name, another namespace, or both.
+ *
+ * The copy is a brand new file that nothing points at yet, so no reference is rewritten
+ * anywhere else — that is the whole difference with a move. Inside the copy, the mentions the
+ * file made of itself follow the new name.
+ */
+export async function copyClass(target?: vscode.Uri): Promise<void> {
+  const source = target ?? vscode.window.activeTextEditor?.document.uri;
+
+  if (!source || !source.path.endsWith('.php')) {
+    return;
+  }
+
+  const fqn = await soleType(source);
+
+  if (!fqn) {
+    vscode.window.showInformationMessage('This file must declare a single type named after it.');
+    return;
+  }
+
+  const suggestion = `${fqn}Copy`;
+  const answer = await vscode.window.showInputBox({
+    title: 'Copy class',
+    prompt: 'Name the copy, and its namespace if it belongs somewhere else.',
+    value: suggestion,
+    // The name comes preselected: a copy is almost always renamed, rarely moved.
+    valueSelection: [suggestion.length - shortNameOf(suggestion).length, suggestion.length],
+    validateInput: (value) => (FQN.test(value.trim()) ? null : 'Invalid fully qualified name.'),
+  });
+
+  if (answer === undefined) {
+    return;
+  }
+
+  const newFqn = answer.trim();
+
+  if (newFqn === fqn) {
+    vscode.window.showErrorMessage('The copy needs a name of its own.');
+    return;
+  }
+
+  const directory = await directoryForNamespace(namespaceOf(newFqn));
+
+  if (!directory) {
+    vscode.window.showErrorMessage(`No composer psr-4 root matches ${namespaceOf(newFqn)}.`);
+    return;
+  }
+
+  const destination = vscode.Uri.joinPath(directory, `${shortNameOf(newFqn)}.php`);
+
+  if (await exists(destination)) {
+    vscode.window.showErrorMessage(`${shortNameOf(newFqn)}.php already exists.`);
+    return;
+  }
+
+  const text = await readText(source);
+
+  if (text === null) {
+    return;
+  }
+
+  const { parsed } = indexedFile(source, text);
+  const edit = new vscode.WorkspaceEdit();
+  edit.createFile(destination);
+  edit.insert(destination, new vscode.Position(0, 0), applyTextEdits(text, copyTypeEdits(parsed, text, fqn, newFqn)));
+  await vscode.workspace.applyEdit(edit, { isRefactoring: true });
+
+  await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(destination));
 }

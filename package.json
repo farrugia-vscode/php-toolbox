@@ -70,6 +70,11 @@
         "category": "PHP"
       },
       {
+        "command": "phpToolbox.copyClass",
+        "title": "Copy class…",
+        "category": "PHP"
+      },
+      {
         "command": "phpToolbox.extractConstant",
         "title": "Extract constant…",
         "category": "PHP"
@@ -203,6 +208,10 @@
         },
         {
           "command": "phpToolbox.inlineVariable",
+        {
+          "command": "phpToolbox.copyClass",
+          "when": "editorLangId == php"
+        },
           "when": "editorLangId == php"
         },
         {
@@ -288,3 +297,10 @@
     "php-parser": "^3.7.0"
   }
 }
+      ],
+      "explorer/context": [
+        {
+          "command": "phpToolbox.copyClass",
+          "when": "resourceExtname == .php",
+          "group": "7_modification@1"
+        }
