@@ -1,7 +1,7 @@
 # PHP Toolbox
 
 Navigation and refactoring for PHP projects, filling the gaps the built-in commands leave —
-the PhpStorm habits, on `Alt+Enter`.
+the PhpStorm habits, in the code action menu.
 
 ## Features
 
@@ -133,11 +133,18 @@ On a method, a property or a constant, the same action answers with call sites i
 what actually calls that public method. Mentions whose receiver could not be typed are
 listed apart rather than dropped: missing a real call is worse than showing one too many.
 
-### Refactorings, on `Alt+Enter`
+### Refactorings, in the code action menu
 
 Every refactoring below is offered as a code action where it applies, so the way in is
-always the same: put the cursor (or the selection) on the code, press `Alt+Enter`, pick.
+always the same: put the cursor (or the selection) on the code, press `Ctrl+.`, pick.
 They are in the command palette too, under **PHP:**.
+
+The entries that take you somewhere rather than edit — find usages, go to test, inherited
+symbols — declare a `navigate` kind, so a menu can read it and list them first.
+
+Install [Alt+Enter](https://github.com/farrugia-vscode/alt-enter) to get them all under one
+key, grouped and under the names PhpStorm gives them, in every language rather than in PHP
+alone. Nothing here needs it.
 
 | Refactoring             | Offered when                                     | What it does                                                                                  |
 |-------------------------|--------------------------------------------------|-----------------------------------------------------------------------------------------------|

@@ -115,11 +115,20 @@ export class CodeAction {
   ) {}
 }
 
+/** A kind carries its value and builds the sub-kinds under it, as the real one does. */
+class StubCodeActionKind {
+  constructor(public readonly value: string) {}
+
+  append(parts: string): StubCodeActionKind {
+    return new StubCodeActionKind(this.value === '' ? parts : `${this.value}.${parts}`);
+  }
+}
+
 export const CodeActionKind = {
-  Empty: 'empty',
-  Refactor: 'refactor',
-  RefactorExtract: 'refactor.extract',
-  RefactorInline: 'refactor.inline',
-  RefactorRewrite: 'refactor.rewrite',
-  RefactorMove: 'refactor.move',
+  Empty: new StubCodeActionKind(''),
+  Refactor: new StubCodeActionKind('refactor'),
+  RefactorExtract: new StubCodeActionKind('refactor.extract'),
+  RefactorInline: new StubCodeActionKind('refactor.inline'),
+  RefactorRewrite: new StubCodeActionKind('refactor.rewrite'),
+  RefactorMove: new StubCodeActionKind('refactor.move'),
 };

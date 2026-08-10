@@ -32,7 +32,7 @@ import { renameMember } from './refactor/renameMember';
 import { rename, renameLocal } from './refactor/renameCommands';
 import { safeDelete } from './refactor/safeDelete';
 import { changeSignature, introduceParameter } from './refactor/signatureCommands';
-import { PhpCodeActionProvider, showRefactorings } from './menu/provider';
+import { PhpCodeActionProvider } from './menu/provider';
 import type { Member } from './types';
 import { registerUnusedMembers } from './unusedMembers';
 import { warmIndex } from './workspaceIndex';
@@ -143,7 +143,6 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('phpToolbox.moveClass', moveClass),
     vscode.commands.registerCommand('phpToolbox.copyClass', copyClass),
     vscode.commands.registerCommand('phpToolbox.renameType', renameType),
-    vscode.commands.registerCommand('phpToolbox.showActions', showRefactorings),
     vscode.commands.registerCommand('phpToolbox.renameMember', renameMember),
     vscode.commands.registerCommand('phpToolbox.renameLocal', renameLocal),
     vscode.commands.registerCommand('phpToolbox.rename', rename),

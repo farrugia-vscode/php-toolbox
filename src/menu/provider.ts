@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { actionsFor } from './actions';
+import { actionsFor, NAVIGATE } from './actions';
 import { cursorContext, type CursorContext } from './context';
 import { indexedFile } from '../php/phpIndex';
 import { intentionsAt } from '../intentions';
@@ -11,21 +11,6 @@ import type { FunctionScope } from '../php/scopes';
 const EXTRACT = vscode.CodeActionKind.RefactorExtract;
 const INLINE = vscode.CodeActionKind.RefactorInline;
 const REWRITE = vscode.CodeActionKind.RefactorRewrite;
-
-/**
- * Opens the whole code action menu, groups and all.
- *
- * `quickFix` alone hides anything typed as a refactoring, and the refactor menu hides the
- * quick fixes; an empty kind matches every group, which is the menu Alt+Enter is expected
- * to open.
- */
-export async function showRefactorings(): Promise<void> {
-  try {
-    await vscode.commands.executeCommand('editor.action.codeAction', { kind: '', apply: 'never' });
-  } catch {
-    await vscode.commands.executeCommand('editor.action.quickFix');
-  }
-}
 
 function action(title: string, command: string, kind: vscode.CodeActionKind, args: unknown[] = []): vscode.CodeAction {
   const created = new vscode.CodeAction(title, kind);
@@ -115,7 +100,7 @@ function selectionActions(context: CursorContext): vscode.CodeAction[] {
  */
 export class PhpCodeActionProvider implements vscode.CodeActionProvider {
   public static readonly providedCodeActionKinds = [
-    vscode.CodeActionKind.Empty,
+    NAVIGATE,
     EXTRACT,
     INLINE,
     REWRITE,

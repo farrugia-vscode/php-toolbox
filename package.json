@@ -2,7 +2,7 @@
   "name": "php-toolbox",
   "displayName": "PHP Toolbox",
   "description": "Navigate and refactor PHP code the way PhpStorm does: extract and inline, change signature, move members, inherited symbols, usages grouped by intent, workspace-wide rename",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "publisher": "farrugia",
   "icon": "icon.png",
   "engines": {
@@ -127,11 +127,6 @@
       {
         "command": "phpToolbox.pushMemberDown",
         "title": "Push member down…",
-        "category": "PHP"
-      },
-      {
-        "command": "phpToolbox.showActions",
-        "title": "Show refactorings…",
         "category": "PHP"
       },
       {
@@ -331,11 +326,6 @@
         "command": "phpToolbox.moveClass",
         "key": "ctrl+shift+f6",
         "when": "editorLangId == php && editorTextFocus"
-      },
-      {
-        "command": "phpToolbox.showActions",
-        "key": "alt+enter",
-        "when": "editorLangId == php && editorTextFocus && !editorReadonly && !suggestWidgetVisible"
       }
     ]
   },

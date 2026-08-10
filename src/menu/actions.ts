@@ -3,7 +3,10 @@ import { IMPLEMENTATION_CATEGORIES, TRAIT_USER_CATEGORIES } from '../usages';
 import type { CursorContext } from './context';
 import type { UsagesSearch } from '../findUsages';
 
-const NAVIGATE = vscode.CodeActionKind.Empty;
+// Going somewhere is not editing, and VS Code standardises no kind for it. An empty kind
+// would do, but nothing tells it apart from a provider that forgot to say — and the Alt+Enter
+// menu reads the kind to know these belong at the top, above the refactorings.
+export const NAVIGATE = vscode.CodeActionKind.Empty.append('navigate');
 const EXTRACT = vscode.CodeActionKind.RefactorExtract;
 const INLINE = vscode.CodeActionKind.RefactorInline;
 const REWRITE = vscode.CodeActionKind.RefactorRewrite;
