@@ -8,7 +8,7 @@ import { mixinMembers } from './completion/mixinMembers';
 import { normalizeDefinition } from './typeReferences';
 import { onDidChangeFile } from './workspaceIndex';
 import { pickEnclosingClass, findClassLikeSymbols } from './classSymbols';
-import { resolveTypeAt, resolveTypeName, type ResolvedClass } from './classResolution';
+import { classSymbolAt, resolveTypeAt, resolveTypeName, type ResolvedClass } from './classResolution';
 
 /** The class a `->` hangs off, and whether the language server got there on its own. */
 export interface Receiverclass {
@@ -278,6 +278,14 @@ async function resolveCallChain(
 
   if (!declaredType) {
     return null;
+  }
+
+  // A fluent `@return $this` sends the chain back to the class the method was found in,
+  // which is where its own `@mixin` hangs — `$query->where()->…` keeps the builder.
+  if (declaredType.isSelfType) {
+    const declaringClass = await classSymbolAt(definition);
+
+    return declaringClass ? { target: declaringClass, isKnownToServer: true } : null;
   }
 
   const target = await resolveTypeAt(

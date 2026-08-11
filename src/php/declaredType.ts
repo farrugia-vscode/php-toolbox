@@ -4,7 +4,15 @@ export interface DeclaredType {
   name: string;
   /** Offset of the type name itself, in the text it was read from. */
   offset: number;
+  /**
+   * True for `$this`, `static` and `self`: they name no class to look up, they point back
+   * at the class the declaration lives in.
+   */
+  isSelfType?: boolean;
 }
+
+/** Types answered by the declaring class itself — a fluent `@return $this` and its cousins. */
+const SELF_TYPES = new Set(['$this', 'static', 'self']);
 
 /** Types that name no class, so there is nothing to resolve behind them. */
 const NON_CLASS_TYPES = new Set([
@@ -44,6 +52,12 @@ function firstClassName(expression: string): { name: string; index: number } | n
 }
 
 function readType(expression: string, expressionOffset: number): DeclaredType | null {
+  const first = expression.split(/[|&]/)[0].trim().replace(/^\?/, '');
+
+  if (SELF_TYPES.has(first.toLowerCase())) {
+    return { name: first, offset: expressionOffset + expression.indexOf(first), isSelfType: true };
+  }
+
   const found = firstClassName(expression);
 
   return found ? { name: found.name, offset: expressionOffset + found.index } : null;

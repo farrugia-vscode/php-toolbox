@@ -48,7 +48,18 @@ describe('findDeclaredType', () => {
 
   test('ignores types that name no class', () => {
     expect(declared('public function |total(): int\n{')).toBeNull();
-    expect(declared('public function |self(): static\n{')).toBeNull();
     expect(declared('private |$customer;')).toBeNull();
+  });
+
+  test('marks a fluent return, which names the declaring class rather than another one', () => {
+    const source = '/**\n * @return $this\n */\npublic function |where($column)\n{';
+
+    expect(findDeclaredType(source.replace('|', ''), source.indexOf('|'))).toMatchObject({
+      name: '$this',
+      isSelfType: true,
+    });
+
+    expect(declared('public function |fresh(): static\n{')).toBe('static@static');
+    expect(declared('public function |copy(): self\n{')).toBe('self@self');
   });
 });
