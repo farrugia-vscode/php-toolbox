@@ -3,6 +3,7 @@ import { parseAst } from './engine';
 /** What a variable was assigned from: enough to look the type up, no more. */
 export type Assigned =
   | { kind: 'member'; receiver: Receiver; name: string }
+  | { kind: 'staticMember'; className: string; name: string }
   | { kind: 'instantiation'; className: string };
 
 export type Receiver = { kind: 'variable'; name: string } | { kind: 'this' };
@@ -15,7 +16,7 @@ function receiverOf(node: any): Receiver | null {
   return node.name === 'this' ? { kind: 'this' } : { kind: 'variable', name: node.name };
 }
 
-/** Reads `$site->customer`, `$site->customer()` and `new Customer()`; anything else is skipped. */
+/** Reads `$site->customer`, `Config::pricing()` and `new Customer()`; anything else is skipped. */
 function describe(node: any): Assigned | null {
   if (!node || typeof node !== 'object') {
     return null;
@@ -29,6 +30,18 @@ function describe(node: any): Assigned | null {
   // A method call is the same lookup as a property, one level up the tree.
   if (node.kind === 'call') {
     return describe(node.what);
+  }
+
+  // `Configuration::pricing()`: the type is whatever the static method returns.
+  if (node.kind === 'staticlookup') {
+    const className = node.what?.name;
+    const name = node.offset?.name;
+
+    if (typeof className !== 'string' || typeof name !== 'string') {
+      return null;
+    }
+
+    return { kind: 'staticMember', className, name };
   }
 
   if (node.kind === 'propertylookup' || node.kind === 'nullsafepropertylookup') {
@@ -108,19 +121,28 @@ export function findParameterType(text: string, name: string, offset: number): s
   return found;
 }
 
+/** One assignment, kept with the variable it writes to and where it is written. */
+export interface AssignmentSite {
+  name: string;
+  start: number;
+  assigned: Assigned;
+}
+
 /**
- * What `$name` last held before `offset`. The last assignment wins: a variable reassigned
- * in a loop or a branch reads with the type it was given closest above the cursor, which
- * is what someone looking at the line expects.
+ * Every assignment the file makes, in one pass.
+ *
+ * Read whole rather than one variable at a time: resolving what a chain of calls reaches
+ * asks the same file about a dozen variables, and parsing it again for each is what makes
+ * a project-wide search slow.
  */
-export function findAssignment(text: string, name: string, offset: number): Assigned | null {
+export function findAssignments(text: string): AssignmentSite[] {
   const ast = parseAst(text);
 
   if (!ast) {
-    return null;
+    return [];
   }
 
-  let closest: { assigned: Assigned; start: number } | null = null;
+  const found: AssignmentSite[] = [];
 
   const walk = (node: any): void => {
     if (!node || typeof node !== 'object') {
@@ -132,18 +154,11 @@ export function findAssignment(text: string, name: string, offset: number): Assi
       return;
     }
 
-    const isAssignmentToName =
-      node.kind === 'assign' &&
-      node.left?.kind === 'variable' &&
-      node.left.name === name &&
-      node.loc?.start.offset < offset;
-
-    if (isAssignmentToName) {
+    if (node.kind === 'assign' && node.left?.kind === 'variable' && typeof node.left.name === 'string') {
       const assigned = describe(node.right);
-      const start = node.loc.start.offset;
 
-      if (assigned && (closest === null || start > closest.start)) {
-        closest = { assigned, start };
+      if (assigned && node.loc) {
+        found.push({ name: node.left.name, start: node.loc.start.offset, assigned });
       }
     }
 
@@ -152,5 +167,26 @@ export function findAssignment(text: string, name: string, offset: number): Assi
 
   walk(ast);
 
-  return closest === null ? null : (closest as { assigned: Assigned }).assigned;
+  return found;
+}
+
+/**
+ * What `$name` last held before `offset`. The last assignment wins: a variable reassigned
+ * in a loop or a branch reads with the type it was given closest above the cursor, which
+ * is what someone looking at the line expects.
+ */
+export function lastAssignment(sites: AssignmentSite[], name: string, offset: number): Assigned | null {
+  let closest: AssignmentSite | null = null;
+
+  for (const site of sites) {
+    if (site.name === name && site.start < offset && (closest === null || site.start > closest.start)) {
+      closest = site;
+    }
+  }
+
+  return closest?.assigned ?? null;
+}
+
+export function findAssignment(text: string, name: string, offset: number): Assigned | null {
+  return lastAssignment(findAssignments(text), name, offset);
 }

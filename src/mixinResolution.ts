@@ -242,6 +242,13 @@ export async function resolveVariable(
     return target ? { target, isKnownToServer: false } : null;
   }
 
+  if (assigned.kind === 'staticMember') {
+    const owner = await resolveTypeName(document, assigned.className, 0, document.lineCount - 1);
+    const target = owner ? await typeOfMember(owner, assigned.name) : null;
+
+    return target ? { target, isKnownToServer: false } : null;
+  }
+
   const owner = await resolveReceiver(document, position, assigned.receiver, hops);
   const target = owner ? await typeOfMember(owner, assigned.name) : null;
 

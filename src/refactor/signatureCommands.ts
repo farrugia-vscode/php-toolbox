@@ -2,7 +2,15 @@ import * as vscode from 'vscode';
 import { indexedFile, type IndexedFile } from '../php/phpIndex';
 import { analyzeScopes, scopeAt } from '../php/scopes';
 import { activeTarget, askName, confirm, withProgress } from './apply';
-import { findCallSites, methodAtCursor, relatedMethods, type MethodLocation } from './callSites';
+import { findCallSites, methodAtCursor, relatedMethods, type CallSite, type MethodLocation } from './callSites';
+import { reportUnresolved, type UnresolvedSite } from './unresolved';
+
+/** A call, read as the plain mention the report shows. */
+const callSite = (site: CallSite): UnresolvedSite => ({
+  file: site.file,
+  nameStart: site.call.nameStart,
+  nameEnd: site.call.nameEnd,
+});
 import { EditSet } from './editSet';
 import { targetExpression } from './extractExpression';
 import {
@@ -51,7 +59,9 @@ async function applySignature(
 
   declarations.forEach((declaration) => edits.add(declaration.file, declarationEdit(declaration.method, specs)));
 
-  const { sites } = await withProgress(`Updating the calls to ${method.name}()…`, () => findCallSites(method));
+  const { sites, unresolved } = await withProgress(`Updating the calls to ${method.name}()…`, () =>
+    findCallSites(method),
+  );
   const refusals: string[] = [];
 
   sites.forEach((site) => {
@@ -71,6 +81,7 @@ async function applySignature(
 
   const { edit, files } = edits.build();
   await vscode.workspace.applyEdit(edit, { isRefactoring: true });
+  await reportUnresolved(`${method.name}()`, unresolved.map(callSite));
   vscode.window.showInformationMessage(
     `${method.name}() — ${sites.length - refusals.length} call(s) updated across ${files} file(s).`,
   );

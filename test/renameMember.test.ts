@@ -45,6 +45,26 @@ final class Refund extends Invoice
 `,
   ],
   [
+    'file:///p/app/Billing/InvoiceFactory.php',
+    `<?php
+
+namespace App\\Billing;
+
+final class InvoiceFactory
+{
+    public function named(): Invoice
+    {
+        return new Invoice(amount: 500);
+    }
+
+    public function positional(): Invoice
+    {
+        return new Invoice(500);
+    }
+}
+`,
+  ],
+  [
     'file:///p/app/Http/Controllers/InvoiceController.php',
     `<?php
 
@@ -108,6 +128,31 @@ describe('renaming a method', () => {
     const { target } = await rename('file:///p/app/Http/Controllers/InvoiceController.php', 'total()', 'amountDue');
 
     expect(target).toMatchObject({ kind: 'method', name: 'total', className: 'App\\Billing\\Invoice' });
+  });
+});
+
+describe('renaming a promoted property', () => {
+  test('renames the parameter and every read of the property', async () => {
+    const { results } = await rename(INVOICE, 'amount)', 'total');
+
+    expect(results.get('/p/app/Billing/Invoice.php')).toContain('private int $total');
+    expect(results.get('/p/app/Billing/Invoice.php')).toContain('return $this->total;');
+  });
+
+  test('follows the named arguments that build the class, and leaves positional values alone', async () => {
+    const { results } = await rename(INVOICE, 'amount)', 'total');
+    const factory = results.get('/p/app/Billing/InvoiceFactory.php') ?? '';
+
+    expect(factory).toContain('new Invoice(total: 500)');
+    expect(factory).toContain('new Invoice(500)');
+  });
+
+  test('is found with the cursor on the `$` of the name, where a click lands', async () => {
+    const text = files.get(INVOICE)!;
+    const file = indexedFile(Uri.parse(INVOICE) as never, text);
+    const target = await memberAtCursor(file, text.indexOf('$amount)'));
+
+    expect(target).toMatchObject({ kind: 'property', name: 'amount' });
   });
 });
 

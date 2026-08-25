@@ -48,7 +48,7 @@ async function destinationOf(
   const fqn =
     mention.receiverKind === 'type' || mention.receiverKind === 'parent'
       ? staticReceiverFqn(file, mention.nameStart)
-      : receiverFqn(file, mention.receiverText, mention.nameStart);
+      : await receiverFqn(file, mention.receiverText, mention.nameStart);
 
   if (!fqn) {
     return null;

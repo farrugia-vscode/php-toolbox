@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
-import { findMemberSites, type MemberSite } from './refactor/callSites';
+import type { AccessMode } from './php/members';
+import { findMemberSites, type MemberSearch, type MemberSite } from './refactor/callSites';
 import { indexedFile } from './php/phpIndex';
 import { memberAtCursor, type MemberTarget } from './refactor/renameMember';
 
@@ -15,15 +16,19 @@ function lineAt(site: MemberSite): string {
   return site.file.text.slice(start, end === -1 ? undefined : end).trim();
 }
 
-function toItems(sites: MemberSite[]): SiteQuickPickItem[] {
-  const certain = sites.filter((site) => site.isCertain);
-  const doubtful = sites.filter((site) => !site.isCertain);
+/** The three questions asked of a property, in the order they are asked. */
+const ACCESS_LABELS: Array<{ access: AccessMode; label: string }> = [
+  { access: 'write', label: 'written' },
+  { access: 'readwrite', label: 'read and written' },
+  { access: 'read', label: 'read' },
+];
 
+function toItems(search: MemberSearch): SiteQuickPickItem[] {
   const group = (label: string, group: MemberSite[]): SiteQuickPickItem[] =>
     group.length === 0
       ? []
       : [
-          { label, kind: vscode.QuickPickItemKind.Separator },
+          { label: `${label} (${group.length})`, kind: vscode.QuickPickItemKind.Separator },
           ...group.map((site) => ({
             label: lineAt(site),
             description: vscode.workspace.asRelativePath(site.file.uri),
@@ -31,11 +36,23 @@ function toItems(sites: MemberSite[]): SiteQuickPickItem[] {
           })),
         ];
 
+  const sites = [...search.sites, ...search.arguments];
+  // A method is called and nothing else: splitting its sites would only add an empty heading.
+  const found = sites.every((site) => site.access === undefined)
+    ? group('usages', sites)
+    : ACCESS_LABELS.flatMap(({ access, label }) =>
+        group(
+          label,
+          sites.filter((site) => site.access === access),
+        ),
+      );
+
   return [
-    ...group(`certain (${certain.length})`, certain),
-    // A receiver whose type is unknown may or may not be this member: shown apart rather
-    // than dropped, since dropping a real call is worse than showing one too many.
-    ...group(`unsure of the receiver (${doubtful.length})`, doubtful),
+    ...found,
+    // Mentions of the name whose receiver nothing declared a type for. They may or may not
+    // be this member, so no refactoring touches them — but hiding them would hide the one
+    // place where a rename can leave the project broken.
+    ...group('receiver type unknown', search.unresolved),
   ];
 }
 
@@ -81,13 +98,13 @@ export async function showMemberUsages(): Promise<void> {
     () => findMemberSites(target),
   );
 
-  if (search.sites.length === 0) {
+  if (search.sites.length + search.arguments.length + search.unresolved.length === 0) {
     vscode.window.showInformationMessage(`No usages found for ${name}.`);
     return;
   }
 
-  const picked = await vscode.window.showQuickPick(toItems(search.sites), {
-    placeHolder: `${name} — ${search.sites.length} usages`,
+  const picked = await vscode.window.showQuickPick(toItems(search), {
+    placeHolder: `${name}, ${search.sites.length + search.arguments.length} usages`,
     matchOnDescription: true,
   });
 

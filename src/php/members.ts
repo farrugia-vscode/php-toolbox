@@ -99,6 +99,14 @@ export interface MethodCall {
   hasSpread: boolean;
 }
 
+/**
+ * What a mention does to a member: reads its value, replaces it, or both.
+ *
+ * `readwrite` is not a hedge, it is the exact answer for `$this->total += 1`, `$this->count++`
+ * and `$this->items['k'] = 1`: the old value is read before the new one is stored.
+ */
+export type AccessMode = 'read' | 'write' | 'readwrite';
+
 /** A member read or written without being called: `$this->total`, `Order::STATUS`. */
 export interface MemberAccess {
   name: string;
@@ -106,6 +114,7 @@ export interface MemberAccess {
   receiverKind: ReceiverKind;
   receiverText: string;
   receiverType: string | null;
+  access: AccessMode;
   nameStart: number;
   nameEnd: number;
 }
@@ -256,12 +265,6 @@ export function callFrom(node: any, text: string): MethodCall | null {
   const nameEnd = offset.loc.end.offset;
   const end = node.loc.end.offset;
   const [argsStart, argsEnd] = parenthesesAfter(text, nameEnd, end);
-  const args: CallArgument[] = (node.arguments ?? []).map((argument: any) => ({
-    label: argument.kind === 'namedargument' ? argument.name : null,
-    start: argument.loc.start.offset,
-    end: argument.loc.end.offset,
-  }));
-
   return {
     name: offset.name,
     isStatic: target.kind === 'staticlookup',
@@ -272,13 +275,79 @@ export function callFrom(node: any, text: string): MethodCall | null {
     end,
     argsStart,
     argsEnd,
-    args,
-    hasSpread: (node.arguments ?? []).some((argument: any) => argument.kind === 'variadicplaceholder' || argument.byref === true || argument.unpack === true),
+    args: argumentsOf(node),
+    hasSpread: hasSpread(node),
   };
 }
 
-/** A property or constant read on an object or a class, or null for anything else. */
-export function accessFrom(node: any, text: string): MemberAccess | null {
+/** The arguments of a call or an instantiation, named ones labelled. */
+function argumentsOf(node: any): CallArgument[] {
+  return (node.arguments ?? []).map((argument: any) => ({
+    label: argument.kind === 'namedargument' ? argument.name : null,
+    start: argument.loc.start.offset,
+    end: argument.loc.end.offset,
+  }));
+}
+
+/** True when an argument is spread (`...$args`), which no position can be read through. */
+function hasSpread(node: any): boolean {
+  return (node.arguments ?? []).some(
+    (argument: any) =>
+      argument.kind === 'variadicplaceholder' || argument.byref === true || argument.unpack === true,
+  );
+}
+
+/**
+ * A `new Foo(...)` site.
+ *
+ * A promoted property is never assigned anywhere: it is handed its value here, once, and a
+ * `readonly` class has no other write. Without these sites, "where is this written" answers
+ * nothing for the very classes that are written the least.
+ */
+export interface Instantiation {
+  /** Type as written, `self` and `static` included, and null when it is computed at runtime. */
+  typeText: string;
+  /** Fully qualified name the walk resolved it to, null when nothing could. */
+  fqn: string | null;
+  args: CallArgument[];
+  hasSpread: boolean;
+  /** Offsets of the type name, which is what a listing points at. */
+  nameStart: number;
+  nameEnd: number;
+}
+
+/** An instantiation, or null when the class is named by an expression. */
+export function instantiationFrom(node: any, text: string, fqn: string | null): Instantiation | null {
+  const target = node.what;
+
+  if (!target?.loc) {
+    return null;
+  }
+
+  const typeText = text.slice(target.loc.start.offset, target.loc.end.offset);
+
+  // `new $class(...)` and `new ($factory())(...)`: the type is only known at runtime.
+  if (!/^\\?[\w\\]+$/.test(typeText)) {
+    return null;
+  }
+
+  return {
+    typeText,
+    fqn,
+    args: argumentsOf(node),
+    hasSpread: hasSpread(node),
+    nameStart: target.loc.start.offset,
+    nameEnd: target.loc.end.offset,
+  };
+}
+
+/**
+ * A property or constant reached on an object or a class, or null for anything else.
+ *
+ * The walk owns `access`: what a mention does to the member is written by the node above it
+ * (an assignment, an `unset`, a `foreach` target), never by the mention itself.
+ */
+export function accessFrom(node: any, text: string, access: AccessMode): MemberAccess | null {
   const isStatic = node.kind === 'staticlookup';
   const offset = node.offset;
 
@@ -299,6 +368,7 @@ export function accessFrom(node: any, text: string): MemberAccess | null {
     name,
     kind,
     ...receiverOf(node.what, text),
+    access,
     nameStart: offset.loc.start.offset,
     nameEnd: offset.loc.end.offset,
   };

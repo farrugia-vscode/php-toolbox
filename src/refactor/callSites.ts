@@ -1,21 +1,21 @@
-import type { MethodCall, MethodDeclaration } from '../php/members';
+import { findAssignments, lastAssignment, type AssignmentSite } from '../php/assignments';
+import type { AccessMode, CallArgument, MemberAccess, MethodCall, MethodDeclaration } from '../php/members';
 import { resolve } from '../php/names';
+import type { Declaration } from '../php/parser';
 import { getPhpIndex, type IndexedFile } from '../php/phpIndex';
+import {
+  classNamesOf,
+  followChain,
+  FOREIGN,
+  isSelfType,
+  splitChain,
+  typeResolution,
+  UNKNOWN,
+  type ChainLink,
+  type Resolution,
+} from '../php/receiverType';
 import { scopesOf } from '../php/scopeCache';
 import { scopeAt } from '../php/scopes';
-
-/** One call, and whether the receiver leaves any doubt about which method it reaches. */
-export interface CallSite {
-  file: IndexedFile;
-  call: MethodCall;
-  isCertain: boolean;
-}
-
-export interface CallSearch {
-  sites: CallSite[];
-  /** Another class in the project declares a method with the same name. */
-  isNameShared: boolean;
-}
 
 /** A method and the file that declares it. */
 export interface MethodLocation {
@@ -23,9 +23,618 @@ export interface MethodLocation {
   method: MethodDeclaration;
 }
 
+/** What a member is: a method is reached by calls, the rest by accesses. */
+export interface MemberRef {
+  kind: 'method' | 'property' | 'staticProperty' | 'constant';
+  name: string;
+  className: string;
+}
+
+/** One mention of a member, wherever it is written. */
+export interface MemberSite {
+  file: IndexedFile;
+  nameStart: number;
+  nameEnd: number;
+  /** What the mention does to the member. A method is called, so it stays undefined. */
+  access?: AccessMode;
+}
+
+/**
+ * An argument that hands a promoted property its value.
+ *
+ * It is a usage of the member without being a mention of its name: renaming the property
+ * rewrites the `name:` of a named argument and must leave a positional one alone, where
+ * writing the new name over the value would replace the value itself.
+ */
+export interface PromotedArgument extends MemberSite {
+  /** Offsets of the `name:` label, null when the argument is positional. */
+  labelStart: number | null;
+  labelEnd: number | null;
+}
+
+/**
+ * A mention nothing could attribute, kept apart rather than guessed at.
+ *
+ * A refactoring must not touch these — nothing says they reach the member — but it must
+ * not pretend they do not exist either: they are the one place its result can be wrong.
+ */
+export interface MemberSearch {
+  sites: MemberSite[];
+  unresolved: MemberSite[];
+  /** Kept out of `sites`: these are values, not the name a rename replaces. */
+  arguments: PromotedArgument[];
+}
+
+export interface CallSite {
+  file: IndexedFile;
+  call: MethodCall;
+}
+
+export interface CallSearch {
+  sites: CallSite[];
+  unresolved: CallSite[];
+}
+
+/** The project's own types. What it does not declare is someone else's and stays untouched. */
+export interface Project {
+  files: IndexedFile[];
+  owners: Map<string, IndexedFile>;
+  declarations: Map<string, Declaration>;
+}
+
+export async function projectOf(): Promise<Project> {
+  return projectFrom(await getPhpIndex());
+}
+
+/** The same, over files already at hand: what a provider running on one file works from. */
+export function projectFrom(files: IndexedFile[]): Project {
+  const owners = new Map<string, IndexedFile>();
+  const declarations = new Map<string, Declaration>();
+
+  for (const file of files) {
+    for (const declaration of file.parsed.declarations) {
+      owners.set(declaration.fqn, file);
+      declarations.set(declaration.fqn, declaration);
+    }
+  }
+
+  return { files, owners, declarations };
+}
+
+const aliasCache = new WeakMap<IndexedFile, Map<string, string>>();
+const assignmentCache = new WeakMap<IndexedFile, AssignmentSite[]>();
+
+function aliasesOf(file: IndexedFile): Map<string, string> {
+  const cached = aliasCache.get(file);
+
+  if (cached) {
+    return cached;
+  }
+
+  const aliases = new Map(file.parsed.imports.map((entry) => [entry.alias.toLowerCase(), entry.fqn]));
+  aliasCache.set(file, aliases);
+
+  return aliases;
+}
+
+function assignmentsIn(file: IndexedFile): AssignmentSite[] {
+  const cached = assignmentCache.get(file);
+
+  if (cached) {
+    return cached;
+  }
+
+  const found = findAssignments(file.text);
+  assignmentCache.set(file, found);
+
+  return found;
+}
+
+/** A name as written, turned into the fully qualified one it means in this file. */
+function resolveName(file: IndexedFile, written: string): string | null {
+  return resolve(written, written.startsWith('\\') ? 'fqn' : 'uqn', file.parsed.namespace, aliasesOf(file));
+}
+
+/** A type the project declares, or a foreign one: there is no third answer for a named class. */
+function knownResolution(project: Project, fqn: string | null): Resolution {
+  return fqn && project.declarations.has(fqn) ? typeResolution(fqn) : FOREIGN;
+}
+
+function nameResolution(project: Project, file: IndexedFile, written: string): Resolution {
+  return knownResolution(project, resolveName(file, written));
+}
+
+/** The class a declared type names: a union answers with the first of ours it lists. */
+function writtenResolution(project: Project, file: IndexedFile, written: string): Resolution {
+  const names = classNamesOf(written);
+
+  if (names.length === 0) {
+    return FOREIGN;
+  }
+
+  for (const name of names) {
+    const found = knownResolution(project, resolveName(file, name));
+
+    if (found.kind === 'type') {
+      return found;
+    }
+  }
+
+  return FOREIGN;
+}
+
+/** The innermost type declared around an offset: what `$this` points at there. */
+function enclosingOf(file: IndexedFile, offset: number): Declaration | null {
+  const enclosing = file.parsed.declarations.filter(
+    (declaration) => declaration.bodyStart <= offset && declaration.bodyEnd >= offset,
+  );
+
+  return enclosing.sort((first, second) => first.bodyEnd - first.bodyStart - (second.bodyEnd - second.bodyStart))[0] ?? null;
+}
+
+/**
+ * The type a member of `fqn` answers with, looked up through the hierarchy.
+ *
+ * A hierarchy that leaves the project answers `foreign`: the member is declared by a
+ * dependency, so it is not ours whatever its name says.
+ */
+function memberType(project: Project, fqn: string, link: ChainLink): Resolution {
+  const seen = new Set<string>();
+  const queue = [fqn];
+  let leavesProject = false;
+
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+
+    if (!current || seen.has(current)) {
+      continue;
+    }
+    seen.add(current);
+
+    const owner = project.owners.get(current);
+    const declaration = project.declarations.get(current);
+
+    if (!owner || !declaration) {
+      leavesProject = true;
+      continue;
+    }
+
+    const written = memberTypeText(owner, current, link);
+
+    if (written !== undefined) {
+      if (written === null) {
+        return UNKNOWN;
+      }
+
+      return isSelfType(written) ? typeResolution(fqn) : writtenResolution(project, owner, written);
+    }
+
+    queue.push(declaration.parent ?? '', ...declaration.interfaces, ...declaration.traits);
+  }
+
+  return leavesProject ? FOREIGN : UNKNOWN;
+}
+
+/** The type written on a member, `null` when it declares none and `undefined` when absent. */
+function memberTypeText(file: IndexedFile, className: string, link: ChainLink): string | null | undefined {
+  const method = file.parsed.methods.find(
+    (candidate) => candidate.className === className && candidate.name === link.name,
+  );
+  const property = file.parsed.properties.find(
+    (candidate) => candidate.className === className && candidate.name === link.name,
+  );
+  const found = link.isCall ? (method ?? property) : (property ?? method);
+
+  if (!found) {
+    return undefined;
+  }
+
+  return 'returnType' in found ? found.returnType : found.type;
+}
+
+/** How deep a variable is followed through the variables it was assigned from. */
+const MAX_ASSIGNMENT_DEPTH = 4;
+
+function variableResolution(
+  project: Project,
+  file: IndexedFile,
+  name: string,
+  offset: number,
+  depth: number,
+): Resolution {
+  const declared = scopeAt(scopesOf(file), offset, offset)?.params.find((param) => param.name === name)?.type;
+
+  if (declared) {
+    return writtenResolution(project, file, declared);
+  }
+
+  const assigned = depth < MAX_ASSIGNMENT_DEPTH ? lastAssignment(assignmentsIn(file), name, offset) : null;
+
+  if (!assigned) {
+    return UNKNOWN;
+  }
+
+  if (assigned.kind === 'instantiation') {
+    return nameResolution(project, file, assigned.className);
+  }
+
+  if (assigned.kind === 'staticMember') {
+    const owner = nameResolution(project, file, assigned.className);
+
+    return owner.kind === 'type'
+      ? memberType(project, owner.fqn, { name: assigned.name, isCall: true })
+      : owner;
+  }
+
+  const receiver =
+    assigned.receiver.kind === 'this'
+      ? knownResolution(project, enclosingOf(file, offset)?.fqn ?? null)
+      : variableResolution(project, file, assigned.receiver.name, offset, depth + 1);
+
+  return receiver.kind === 'type' ? memberType(project, receiver.fqn, { name: assigned.name, isCall: true }) : receiver;
+}
+
+/** The expression a chain starts from: `$this`, a type name, a `new`, or a variable. */
+function rootResolution(project: Project, file: IndexedFile, root: string, offset: number): Resolution {
+  const trimmed = root.trim();
+  const lowered = trimmed.toLowerCase();
+
+  if (trimmed === '$this' || lowered === 'self' || lowered === 'static') {
+    return knownResolution(project, enclosingOf(file, offset)?.fqn ?? null);
+  }
+
+  if (lowered === 'parent') {
+    return knownResolution(project, enclosingOf(file, offset)?.parent ?? null);
+  }
+
+  const instantiated = /^new\s+(\\?[A-Za-z_][\w\\]*)/.exec(trimmed);
+
+  if (instantiated) {
+    return nameResolution(project, file, instantiated[1]);
+  }
+
+  if (/^\\?[A-Za-z_]\w*(?:\\[A-Za-z_]\w*)*$/.test(trimmed)) {
+    return nameResolution(project, file, trimmed);
+  }
+
+  const variable = /^\$(\w+)$/.exec(trimmed);
+
+  if (variable) {
+    return variableResolution(project, file, variable[1], offset, 0);
+  }
+
+  return UNKNOWN;
+}
+
+/**
+ * The type a mention is written on, whatever its receiver is made of.
+ *
+ * This is the whole safety of a rename: a call is rewritten because the receiver was
+ * proven to hold the class, never because the method happens to share its name.
+ */
+export function mentionResolution(
+  project: Project,
+  file: IndexedFile,
+  mention: Pick<MemberAccess, 'receiverKind' | 'receiverText' | 'nameStart'>,
+): Resolution {
+  const offset = mention.nameStart;
+
+  if (mention.receiverKind === 'this' || mention.receiverKind === 'self' || mention.receiverKind === 'static') {
+    return knownResolution(project, enclosingOf(file, offset)?.fqn ?? null);
+  }
+
+  if (mention.receiverKind === 'parent') {
+    return knownResolution(project, enclosingOf(file, offset)?.parent ?? null);
+  }
+
+  if (mention.receiverKind === 'type') {
+    return nameResolution(project, file, mention.receiverText);
+  }
+
+  const chain = splitChain(mention.receiverText);
+  const root = rootResolution(project, file, chain.root, offset);
+
+  return followChain(root, chain.links, { memberType: (fqn, link) => memberType(project, fqn, link) });
+}
+
+/**
+ * The method `fqn` answers to, declared by it or by anything it inherits from.
+ *
+ * A call is written on the class, not on the class that happens to declare the method: the
+ * signature it fills has to be looked up the same way PHP looks it up.
+ */
+export function declaredMethod(project: Project, fqn: string, name: string): MethodDeclaration | null {
+  for (const candidate of [fqn, ...ancestorsOf(project, fqn)]) {
+    const found = project.owners
+      .get(candidate)
+      ?.parsed.methods.find((method) => method.className === candidate && method.name === name);
+
+    if (found) {
+      return found;
+    }
+  }
+
+  return null;
+}
+
+/** Every type the declaration inherits from, however deep, within the project. */
+function ancestorsOf(project: Project, fqn: string): string[] {
+  const seen = new Set<string>();
+  const declaration = project.declarations.get(fqn);
+  const queue = declaration ? [declaration.parent ?? '', ...declaration.interfaces, ...declaration.traits] : [];
+
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+
+    if (!current || seen.has(current)) {
+      continue;
+    }
+    seen.add(current);
+
+    const found = project.declarations.get(current);
+
+    if (found) {
+      queue.push(found.parent ?? '', ...found.interfaces, ...found.traits);
+    }
+  }
+
+  return [...seen];
+}
+
+function declaresMember(project: Project, fqn: string, member: MemberRef): boolean {
+  const file = project.owners.get(fqn);
+
+  if (!file) {
+    return false;
+  }
+
+  const declared =
+    member.kind === 'method'
+      ? file.parsed.methods
+      : member.kind === 'constant'
+        ? file.parsed.constants
+        : file.parsed.properties;
+
+  return declared.some((candidate) => candidate.className === fqn && candidate.name === member.name);
+}
+
+/**
+ * Every class a call to the member can be written on: the one declaring it, the contracts
+ * above it that promise it, and everything below them that inherits or overrides it.
+ *
+ * Renaming a method renames the interface too, so every class bound by that interface has
+ * to follow — including the ones that never name the class the rename started from.
+ */
+export function memberFamily(project: Project, member: MemberRef): Set<string> {
+  const children = new Map<string, string[]>();
+
+  for (const [fqn, declaration] of project.declarations) {
+    for (const parent of [declaration.parent ?? '', ...declaration.interfaces, ...declaration.traits]) {
+      if (parent) {
+        children.set(parent, [...(children.get(parent) ?? []), fqn]);
+      }
+    }
+  }
+
+  const family = new Set([member.className]);
+  const queue = [member.className];
+
+  while (queue.length > 0) {
+    const fqn = queue.shift()!;
+    const relatives = [
+      ...ancestorsOf(project, fqn).filter((ancestor) => declaresMember(project, ancestor, member)),
+      ...(children.get(fqn) ?? []),
+    ];
+
+    for (const relative of relatives) {
+      if (!family.has(relative)) {
+        family.add(relative);
+        queue.push(relative);
+      }
+    }
+  }
+
+  return family;
+}
+
+/** Every mention of a member across the project, calls or accesses depending on its kind. */
+export async function findMemberSites(member: MemberRef): Promise<MemberSearch> {
+  const project = await projectOf();
+  const family = memberFamily(project, member);
+  const sites: MemberSite[] = [];
+  const unresolved: MemberSite[] = [];
+
+  for (const file of project.files) {
+    const mentions: Array<
+      Pick<MemberAccess, 'receiverKind' | 'receiverText' | 'nameStart' | 'nameEnd'> & { access?: AccessMode }
+    > =
+      member.kind === 'method'
+        ? file.parsed.calls.filter((call) => call.name === member.name)
+        : file.parsed.accesses.filter((access) => access.name === member.name && access.kind === member.kind);
+
+    for (const mention of mentions) {
+      const resolution = mentionResolution(project, file, mention);
+      const site = { file, nameStart: mention.nameStart, nameEnd: mention.nameEnd, access: mention.access };
+
+      if (resolution.kind === 'type' && family.has(resolution.fqn)) {
+        sites.push(site);
+      } else if (resolution.kind === 'unknown') {
+        unresolved.push(site);
+      }
+    }
+  }
+
+  return { sites, unresolved, arguments: promotedWrites(project, family, member) };
+}
+
+/** How often a property is read and how often it is written, for a listing that shows both. */
+export interface AccessCount {
+  read: number;
+  written: number;
+}
+
+/** Key a count is stored under: a name alone would collide between two classes. */
+export function accessKey(member: Pick<MemberRef, 'className' | 'name'>): string {
+  return `${member.className}::${member.name}`;
+}
+
+/**
+ * Reads and writes of several properties, counted in a single pass over the project.
+ *
+ * A lens asks the question for every property of the file at once, and a pass per property
+ * would read the whole project as many times as the class has fields.
+ */
+export async function countPropertyAccesses(members: MemberRef[]): Promise<Map<string, AccessCount>> {
+  const project = await projectOf();
+  const counts = new Map<string, AccessCount>();
+  const families = new Map<string, Set<string>>();
+  const byName = new Map<string, MemberRef[]>();
+
+  for (const member of members) {
+    const key = accessKey(member);
+    const family = memberFamily(project, member);
+
+    families.set(key, family);
+    counts.set(key, { read: 0, written: promotedWrites(project, family, member).length });
+    byName.set(member.name, [...(byName.get(member.name) ?? []), member]);
+  }
+
+  for (const file of project.files) {
+    for (const access of file.parsed.accesses) {
+      const candidates = byName.get(access.name) ?? [];
+
+      for (const member of candidates) {
+        if (access.kind !== member.kind) {
+          continue;
+        }
+
+        const resolution = mentionResolution(project, file, access);
+        const key = accessKey(member);
+
+        if (resolution.kind !== 'type' || !families.get(key)?.has(resolution.fqn)) {
+          continue;
+        }
+
+        const count = counts.get(key)!;
+
+        if (access.access !== 'write') {
+          count.read += 1;
+        }
+
+        if (access.access !== 'read') {
+          count.written += 1;
+        }
+      }
+    }
+  }
+
+  return counts;
+}
+
+/** True when building `fqn` runs the constructor `className` declares, argument order included. */
+function keepsConstructorOf(project: Project, fqn: string, className: string): boolean {
+  if (fqn === className) {
+    return true;
+  }
+
+  const file = project.owners.get(fqn);
+
+  return !file?.parsed.methods.some((method) => method.className === fqn && method.name === '__construct');
+}
+
+/**
+ * The arguments that hand a promoted property its value, `new Order(total: 10)` included.
+ *
+ * They are written where the class is built, not where the property is declared, so nothing
+ * in `accesses` can carry them: without this pass a promoted property reads as never written.
+ */
+function promotedWrites(project: Project, family: Set<string>, member: MemberRef): PromotedArgument[] {
+  if (member.kind !== 'property') {
+    return [];
+  }
+
+  const owner = project.owners.get(member.className);
+  const constructor = owner?.parsed.methods.find(
+    (method) => method.className === member.className && method.name === '__construct',
+  );
+  const index = constructor?.params.findIndex((param) => param.isPromoted && param.name === member.name) ?? -1;
+
+  if (index === -1) {
+    return [];
+  }
+
+  const sites: PromotedArgument[] = [];
+
+  for (const file of project.files) {
+    // `new Order(...)` builds it, `parent::__construct(...)` hands the value up: both write.
+    const builders: Array<{ fqn: string | null; args: CallArgument[]; hasSpread: boolean }> = [
+      ...file.parsed.instantiations,
+      ...file.parsed.calls
+        .filter((call) => call.name === '__construct')
+        .map((call) => {
+          const resolution = mentionResolution(project, file, call);
+
+          return { fqn: resolution.kind === 'type' ? resolution.fqn : null, args: call.args, hasSpread: call.hasSpread };
+        }),
+    ];
+
+    for (const builder of builders) {
+      if (!builder.fqn || !family.has(builder.fqn)) {
+        continue;
+      }
+
+      const named = builder.args.find((argument) => argument.label === member.name);
+      // A spread hides which position holds what, and a subclass with a constructor of its
+      // own puts something else at that position: only a named argument survives both.
+      const byPosition = !builder.hasSpread && keepsConstructorOf(project, builder.fqn, member.className);
+      const positional = byPosition ? builder.args[index] : undefined;
+      const argument = named ?? (positional?.label === null ? positional : undefined);
+
+      if (argument) {
+        sites.push({
+          file,
+          nameStart: argument.start,
+          nameEnd: argument.end,
+          access: 'write',
+          labelStart: argument.label === null ? null : argument.start,
+          labelEnd: argument.label === null ? null : argument.start + argument.label.length,
+        });
+      }
+    }
+  }
+
+  return sites;
+}
+
+/** Every call that reaches the given method, and the ones nothing could attribute. */
+export async function findCallSites(method: MethodDeclaration): Promise<CallSearch> {
+  const project = await projectOf();
+  const family = memberFamily(project, { kind: 'method', name: method.name, className: method.className });
+  const sites: CallSite[] = [];
+  const unresolved: CallSite[] = [];
+
+  for (const file of project.files) {
+    for (const call of file.parsed.calls) {
+      if (call.name !== method.name) {
+        continue;
+      }
+
+      const resolution = mentionResolution(project, file, call);
+
+      if (resolution.kind === 'type' && family.has(resolution.fqn)) {
+        sites.push({ file, call });
+      } else if (resolution.kind === 'unknown') {
+        unresolved.push({ file, call });
+      }
+    }
+  }
+
+  return { sites, unresolved };
+}
+
 /** Walks up the hierarchy until a class in the project declares the method. */
 async function declaredIn(className: string, name: string): Promise<MethodLocation | null> {
-  const files = await getPhpIndex();
+  const project = await projectOf();
   const seen = new Set<string>();
   let current: string | null = className;
 
@@ -33,7 +642,7 @@ async function declaredIn(className: string, name: string): Promise<MethodLocati
     seen.add(current);
     const owner: string = current;
 
-    for (const file of files) {
+    for (const file of project.files) {
       const method = file.parsed.methods.find(
         (candidate) => candidate.className === owner && candidate.name === name,
       );
@@ -43,9 +652,7 @@ async function declaredIn(className: string, name: string): Promise<MethodLocati
       }
     }
 
-    const declaration = files
-      .flatMap((file) => file.parsed.declarations)
-      .find((candidate) => candidate.fqn === owner);
+    const declaration = project.declarations.get(owner);
     const inherited: string[] = declaration ? [...declaration.traits, declaration.parent ?? ''] : [];
 
     current = inherited.filter(Boolean)[0] ?? null;
@@ -54,35 +661,20 @@ async function declaredIn(className: string, name: string): Promise<MethodLocati
   return null;
 }
 
-/**
- * Type a receiver was declared with, when the file says so: a typed parameter or a typed
- * property is enough to know what `$invoice->total()` reaches, which is how most calls are
- * written in a typed codebase.
- */
-export function receiverFqn(file: IndexedFile, receiverText: string, offset: number): string | null {
-  const local = /^\$(\w+)$/.exec(receiverText);
-  const property = /^\$this->(\w+)$/.exec(receiverText);
-  const enclosing = file.parsed.declarations.find(
-    (declaration) => declaration.bodyStart <= offset && declaration.bodyEnd >= offset,
-  );
+/** The class a receiver was proven to hold, or null when nothing said what it holds. */
+export async function receiverFqn(
+  file: IndexedFile,
+  receiverText: string,
+  offset: number,
+): Promise<string | null> {
+  const project = await projectOf();
+  const resolution = mentionResolution(project, file, {
+    receiverKind: 'expression',
+    receiverText,
+    nameStart: offset,
+  });
 
-  const written = property
-    ? file.parsed.properties.find(
-        (candidate) => candidate.className === enclosing?.fqn && candidate.name === property[1],
-      )?.type
-    : local
-      ? scopeAt(scopesOf(file), offset, offset)?.params.find((param) => param.name === local[1])?.type
-      : null;
-
-  const bare = written?.replace(/^\?/, '');
-
-  if (!bare || /[|&]/.test(bare)) {
-    return null;
-  }
-
-  const aliases = new Map(file.parsed.imports.map((entry) => [entry.alias.toLowerCase(), entry.fqn]));
-
-  return resolve(bare, bare.startsWith('\\') ? 'fqn' : 'uqn', file.parsed.namespace, aliases);
+  return resolution.kind === 'type' ? resolution.fqn : null;
 }
 
 /**
@@ -106,21 +698,14 @@ export async function methodAtCursor(file: IndexedFile, offset: number): Promise
     return null;
   }
 
-  if (call.receiverKind === 'type' || call.receiverKind === 'parent') {
-    const fqn = staticReceiverFqn(file, call);
+  const project = await projectOf();
+  const resolution = mentionResolution(project, file, call);
 
-    return fqn ? declaredIn(fqn, call.name) : null;
+  if (resolution.kind === 'type') {
+    return declaredIn(resolution.fqn, call.name);
   }
 
-  const receiver = receiverFqn(file, call.receiverText, offset);
-
-  if (receiver) {
-    return declaredIn(receiver, call.name);
-  }
-
-  const enclosing = file.parsed.declarations.find(
-    (declaration) => declaration.bodyStart <= offset && declaration.bodyEnd >= offset,
-  );
+  const enclosing = enclosingOf(file, offset);
 
   return enclosing ? declaredIn(enclosing.fqn, call.name) : null;
 }
@@ -131,182 +716,16 @@ export async function methodAtCursor(file: IndexedFile, offset: number): Promise
  * not the others stops matching.
  */
 export async function relatedMethods(method: MethodDeclaration): Promise<MethodLocation[]> {
-  const files = await getPhpIndex();
-  const declarations = files.flatMap((file) => file.parsed.declarations);
-  const own = declarations.find((declaration) => declaration.fqn === method.className);
-  const family = new Set<string>([
-    ...(own ? [own.parent ?? '', ...own.interfaces, ...own.traits] : []),
-    ...declarations
-      .filter(
-        (declaration) =>
-          declaration.parent === method.className ||
-          declaration.interfaces.includes(method.className) ||
-          declaration.traits.includes(method.className),
-      )
-      .map((declaration) => declaration.fqn),
-  ].filter(Boolean));
+  const project = await projectOf();
+  const family = memberFamily(project, {
+    kind: 'method',
+    name: method.name,
+    className: method.className,
+  });
 
-  return files.flatMap((file) =>
+  return project.files.flatMap((file) =>
     file.parsed.methods
       .filter((candidate) => candidate.name === method.name && family.has(candidate.className))
       .map((candidate) => ({ file, method: candidate })),
   );
-}
-
-/** Fully qualified name the receiver of a static call was written as. */
-function staticReceiverFqn(file: IndexedFile, call: MethodCall): string | null {
-  const reference = file.parsed.references.find(
-    (candidate) => candidate.end <= call.nameStart && candidate.start >= call.start,
-  );
-
-  return reference?.fqn ?? null;
-}
-
-/** Types declared in the file that inherit the method, which is what `$this->` reaches. */
-function declaresFamily(file: IndexedFile, className: string): boolean {
-  return file.parsed.declarations.some(
-    (declaration) =>
-      declaration.fqn === className ||
-      declaration.parent === className ||
-      declaration.traits.includes(className) ||
-      declaration.interfaces.includes(className),
-  );
-}
-
-/** What a member is: a method is reached by calls, the rest by accesses. */
-export interface MemberRef {
-  kind: 'method' | 'property' | 'staticProperty' | 'constant';
-  name: string;
-  className: string;
-}
-
-/** One mention of a member, wherever it is written. */
-export interface MemberSite {
-  file: IndexedFile;
-  nameStart: number;
-  nameEnd: number;
-  isCertain: boolean;
-}
-
-export interface MemberSearch {
-  sites: MemberSite[];
-  isNameShared: boolean;
-}
-
-/**
- * How sure we are that a mention reaches the member we are after: `excluded` when the
- * receiver names another type, `certain` when it names this one or its family.
- */
-function certaintyOf(
-  file: IndexedFile,
-  mention: { receiverKind: string; receiverText: string; nameStart: number },
-  className: string,
-): 'excluded' | 'certain' | 'uncertain' {
-  if (mention.receiverKind === 'type') {
-    // The type sits right before the `::`, so only a reference ending there can be it.
-    const reference = file.parsed.references.find(
-      (candidate) => candidate.end <= mention.nameStart && mention.nameStart - candidate.end <= 4,
-    );
-
-    return reference?.fqn === className ? 'certain' : 'excluded';
-  }
-
-  if (mention.receiverKind !== 'expression') {
-    // `$this`, `self`, `static` and `parent` all stay inside the family.
-    return declaresFamily(file, className) ? 'certain' : 'uncertain';
-  }
-
-  // A receiver held by a typed parameter or property says exactly what it reaches.
-  const declared = receiverFqn(file, mention.receiverText, mention.nameStart);
-
-  if (declared) {
-    return declared === className ? 'certain' : 'excluded';
-  }
-
-  return 'uncertain';
-}
-
-/** Every mention of a member across the project, calls or accesses depending on its kind. */
-export async function findMemberSites(member: MemberRef): Promise<MemberSearch> {
-  const files = await getPhpIndex();
-  const sites: MemberSite[] = [];
-  let isNameShared = false;
-
-  for (const file of files) {
-    const declared =
-      member.kind === 'method'
-        ? file.parsed.methods
-        : member.kind === 'constant'
-          ? file.parsed.constants
-          : file.parsed.properties;
-
-    isNameShared =
-      isNameShared ||
-      declared.some((candidate) => candidate.name === member.name && candidate.className !== member.className);
-
-    const mentions =
-      member.kind === 'method'
-        ? file.parsed.calls.filter((call) => call.name === member.name)
-        : file.parsed.accesses.filter((access) => access.name === member.name && access.kind === member.kind);
-
-    mentions.forEach((mention) => {
-      const certainty = certaintyOf(file, mention, member.className);
-
-      if (certainty !== 'excluded') {
-        sites.push({
-          file,
-          nameStart: mention.nameStart,
-          nameEnd: mention.nameEnd,
-          isCertain: certainty === 'certain',
-        });
-      }
-    });
-  }
-
-  return { sites, isNameShared };
-}
-
-/**
- * Every call that reaches the given method.
- *
- * A receiver written as `$this` or as the class name is certain; a call on a variable is
- * matched by name only, because nothing here knows what that variable holds.
- */
-export async function findCallSites(method: MethodDeclaration): Promise<CallSearch> {
-  const files = await getPhpIndex();
-  const sites: CallSite[] = [];
-  let isNameShared = false;
-
-  for (const file of files) {
-    isNameShared =
-      isNameShared ||
-      file.parsed.methods.some(
-        (candidate) => candidate.name === method.name && candidate.className !== method.className,
-      );
-
-    for (const call of file.parsed.calls) {
-      if (call.name !== method.name) {
-        continue;
-      }
-
-      if (call.receiverKind === 'type' || call.receiverKind === 'parent') {
-        const fqn = staticReceiverFqn(file, call);
-
-        if (fqn === method.className) {
-          sites.push({ file, call, isCertain: true });
-        }
-        continue;
-      }
-
-      if (call.receiverKind === 'this' || call.receiverKind === 'self' || call.receiverKind === 'static') {
-        // A deeper descendant reaches the method too, without naming it anywhere.
-        sites.push({ file, call, isCertain: declaresFamily(file, method.className) });
-        continue;
-      }
-
-      sites.push({ file, call, isCertain: false });
-    }
-  }
-
-  return { sites, isNameShared };
 }

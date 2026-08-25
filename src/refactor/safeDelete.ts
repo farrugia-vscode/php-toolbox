@@ -44,14 +44,16 @@ async function memberDeletion(file: IndexedFile, offset: number): Promise<Deleti
   }
 
   const span = spanOf(file, declared.start, declared.end);
-  const { sites } = await findMemberSites(target);
+  // Deleting is the one refactoring where doubt counts against: a mention nothing could
+  // attribute may well be the member, and dropping it would delete code still in use.
+  const { sites, unresolved, arguments: promotedArguments } = await findMemberSites(target);
 
   return {
     label: `${target.className.split('\\').pop()}::${target.name}`,
     span,
     file,
     isWholeFile: false,
-    usages: sites
+    usages: [...sites, ...promotedArguments, ...unresolved]
       .filter((site) => site.file.uri.toString() !== file.uri.toString() || site.nameStart < span.start || site.nameStart > span.end)
       .map((site) => ({
         uri: site.file.uri,

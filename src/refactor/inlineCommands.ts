@@ -5,7 +5,15 @@ import { activeTarget, applyPlan, confirm, withProgress } from './apply';
 import { findCallSites, methodAtCursor, type CallSite } from './callSites';
 import { EditSet } from './editSet';
 import { inlineCall, inlineTarget, removeMethod, type InlineTarget } from './inlineMethod';
+import { reportUnresolved, type UnresolvedSite } from './unresolved';
 import { planInlineVariable } from './inlineVariable';
+
+/** A call, read as the plain mention the report shows. */
+const toSite = (site: CallSite): UnresolvedSite => ({
+  file: site.file,
+  nameStart: site.call.nameStart,
+  nameEnd: site.call.nameEnd,
+});
 
 export async function inlineVariable(): Promise<void> {
   const target = activeTarget();
@@ -76,14 +84,17 @@ export async function inlineMethod(): Promise<void> {
     return;
   }
 
-  const { sites, isNameShared } = await withProgress(`Looking for calls to ${method.name}()…`, () =>
+  const { sites, unresolved } = await withProgress(`Looking for calls to ${method.name}()…`, () =>
     findCallSites(method),
   );
-  const uncertain = sites.filter((site) => !site.isCertain);
 
-  if (uncertain.length > 0 && isNameShared) {
+  // Inlining removes the method, so a call left behind would not compile. The user decides
+  // with the list in hand rather than being asked about a number.
+  if (unresolved.length > 0) {
+    await reportUnresolved(`${method.name}()`, unresolved.map(toSite));
+
     const isConfirmed = await confirm(
-      `${uncertain.length} call(s) to ${method.name}() are made on a variable, and another class declares a method with that name. Inline them anyway?`,
+      `${unresolved.length} call(s) to ${method.name}() could not be attributed and will be left as they are. Inline the rest and delete the method anyway?`,
     );
 
     if (!isConfirmed) {

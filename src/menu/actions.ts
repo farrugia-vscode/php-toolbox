@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { IMPLEMENTATION_CATEGORIES, TRAIT_USER_CATEGORIES } from '../usages';
+import { descendantSearch } from '../usages';
 import type { CursorContext } from './context';
 import type { UsagesSearch } from '../findUsages';
 
@@ -29,22 +29,22 @@ const onMemberUsage = (context: CursorContext): boolean =>
 const onLocal = (context: CursorContext): boolean =>
   context.member === null && !context.isOnMemberUsage && context.isOnLocal;
 
-/** The search a type asks for: an interface is looked up for its implementations. */
+/**
+ * The search a type asks for: an interface is looked up for its implementations. A type
+ * nothing can be built on is looked up for everything, as narrowing would hide the answer.
+ */
 function searchForType(context: CursorContext): { title: string; search: UsagesSearch } {
   const declaration = context.type;
+  const isInherited =
+    declaration?.kind === 'interface' || declaration?.kind === 'trait' || declaration?.isAbstract === true;
 
-  if (declaration?.kind === 'interface' || declaration?.isAbstract) {
-    return {
-      title: 'Find implementations',
-      search: { categories: IMPLEMENTATION_CATEGORIES, label: 'implementations' },
-    };
+  if (!declaration || !isInherited) {
+    return { title: 'Find usages', search: {} };
   }
 
-  if (declaration?.kind === 'trait') {
-    return { title: 'Find trait users', search: { categories: TRAIT_USER_CATEGORIES, label: 'trait users' } };
-  }
+  const { categories, label } = descendantSearch(declaration.kind);
 
-  return { title: 'Find usages', search: {} };
+  return { title: `Find ${label}`, search: { categories, label } };
 }
 
 /**

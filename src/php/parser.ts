@@ -3,11 +3,14 @@ import { collectImports, resolve, trimLeadingSeparator, type Import } from './na
 import {
   accessFrom,
   callFrom,
+  instantiationFrom,
   promotedVisibility,
   constantFrom,
   methodFrom,
   propertyFrom,
+  type AccessMode,
   type ClassConstant,
+  type Instantiation,
   type MemberAccess,
   type MethodCall,
   type MethodDeclaration,
@@ -60,6 +63,7 @@ export interface ParsedFile {
   constants: ClassConstant[];
   calls: MethodCall[];
   accesses: MemberAccess[];
+  instantiations: Instantiation[];
 }
 
 const DECLARATION_KINDS = new Set(['class', 'interface', 'trait', 'enum']);
@@ -78,9 +82,11 @@ export function parseFile(text: string): ParsedFile {
     constants: [],
     calls: [],
     accesses: [],
+    instantiations: [],
   };
   const aliases = new Map<string, string>();
   const called = new WeakSet<object>();
+  const written = new WeakMap<object, AccessMode>();
 
   const ast = parseAst(text);
 
@@ -95,6 +101,55 @@ export function parseFile(text: string): ParsedFile {
 
     const written = typeof node.name === 'string' ? node.name : node.name?.name ?? '';
     return resolve(written, node.resolution ?? 'uqn', parsed.namespace, aliases);
+  };
+
+  /** The class a `new` names, with `self`, `static` and `parent` read from where it sits. */
+  const instantiated = (node: any, scope: string): string | null => {
+    const kind = node.what?.kind;
+
+    if (kind === 'selfreference' || kind === 'staticreference') {
+      return scope || null;
+    }
+
+    if (kind === 'parentreference') {
+      return parsed.declarations.find((declaration) => declaration.fqn === scope)?.parent ?? null;
+    }
+
+    return fqnOf(node.what);
+  };
+
+  const LOOKUPS = new Set(['propertylookup', 'nullsafepropertylookup', 'staticlookup']);
+
+  /**
+   * Records what an assignment does to the member it targets, before the walk reaches it.
+   *
+   * Writing an element (`$this->items['k'] = 1`) or adding to a value (`$this->total += 1`)
+   * reads the member first: the mode says so rather than rounding it up to a write.
+   */
+  const markWritten = (node: any, mode: AccessMode): void => {
+    if (!node || typeof node !== 'object') {
+      return;
+    }
+
+    if (node.kind === 'offsetlookup') {
+      markWritten(node.what, 'readwrite');
+      return;
+    }
+
+    // `[$a->x, $b->y] = $pair` and `list($a->x) = $pair` assign each entry.
+    if (node.kind === 'array' || node.kind === 'list') {
+      (node.items ?? []).forEach((item: any) => markWritten(item, mode));
+      return;
+    }
+
+    if (node.kind === 'entry') {
+      markWritten(node.value, mode);
+      return;
+    }
+
+    if (LOOKUPS.has(node.kind)) {
+      written.set(node, mode);
+    }
   };
 
   const declare = (node: any): Declaration => {
@@ -191,11 +246,31 @@ export function parseFile(text: string): ParsedFile {
         // The lookup under a call names the method, not a member of its own.
         called.add(node.what);
       }
+    } else if (node.kind === 'new') {
+      const instantiation = instantiationFrom(node, text, instantiated(node, scope));
+      if (instantiation) {
+        parsed.instantiations.push(instantiation);
+      }
+    } else if (node.kind === 'assign') {
+      // `=` replaces the value, `+=` and `??=` need the old one first.
+      markWritten(node.left, node.operator === '=' ? 'write' : 'readwrite');
+    } else if (node.kind === 'assignref') {
+      // `$alias = &$this->total`: whoever holds the alias can write through it.
+      markWritten(node.left, 'write');
+      markWritten(node.right, 'readwrite');
+    } else if (node.kind === 'pre' || node.kind === 'post') {
+      markWritten(node.what, 'readwrite');
+    } else if (node.kind === 'unset') {
+      (node.variables ?? []).forEach((variable: any) => markWritten(variable, 'write'));
+    } else if (node.kind === 'foreach') {
+      // Only the targets are written; the source is read, like any other expression.
+      markWritten(node.key, 'write');
+      markWritten(node.value, 'write');
     } else if (
       (node.kind === 'propertylookup' || node.kind === 'nullsafepropertylookup' || node.kind === 'staticlookup') &&
       !called.has(node)
     ) {
-      const access = accessFrom(node, text);
+      const access = accessFrom(node, text, written.get(node) ?? 'read');
       if (access) {
         parsed.accesses.push(access);
       }

@@ -124,8 +124,32 @@ function dedupe(usages: Usage[]): Usage[] {
 
 export const CATEGORY_ORDER = CATEGORIES.map(({ category }) => category);
 
-/** Honouring a contract: what "find implementations" means for an interface or an abstract class. */
+/** Honouring a contract: what "find implementations" means for an interface. */
 export const IMPLEMENTATION_CATEGORIES = ['Implemented by', 'Extended by'];
 
 /** A trait has no implementations; it has classes that pull it in. */
 export const TRAIT_USER_CATEGORIES = ['Used as a trait'];
+
+/** A class is not implemented, it is extended. */
+export const SUBTYPE_CATEGORIES = ['Extended by'];
+
+/** Types built on top of this one, whatever the kind: what the second lens stands for. */
+export function descendantSearch(kind: string): { categories: string[]; label: string } {
+  if (kind === 'interface') {
+    return { categories: IMPLEMENTATION_CATEGORIES, label: 'implementations' };
+  }
+
+  if (kind === 'trait') {
+    return { categories: TRAIT_USER_CATEGORIES, label: 'trait users' };
+  }
+
+  return { categories: SUBTYPE_CATEGORIES, label: 'subtypes' };
+}
+
+/**
+ * What is left once the descendants have a listing of their own: repeating them under
+ * "references" would only make the answer to "who is built on this" harder to find.
+ */
+export const REFERENCE_CATEGORIES = CATEGORY_ORDER.filter(
+  (category) => ![...IMPLEMENTATION_CATEGORIES, ...TRAIT_USER_CATEGORIES].includes(category),
+);

@@ -59,6 +59,38 @@ async function implementationsOf(method: MethodDeclaration): Promise<Implementat
   return found.sort((first, second) => first.className.localeCompare(second.className));
 }
 
+/** How many classes end up carrying a body for each of these methods of `className`. */
+export async function implementationCounts(
+  className: string,
+  names: string[],
+): Promise<Map<string, number>> {
+  const files = await getPhpIndex();
+  const all = new Map(
+    files.flatMap((file) => file.parsed.declarations).map((declaration) => [declaration.fqn, declaration]),
+  );
+  const counts = new Map(names.map((name) => [name, 0]));
+
+  for (const file of files) {
+    for (const declaration of file.parsed.declarations) {
+      if (declaration.fqn === className || !ancestorsOf(declaration, all).has(className)) {
+        continue;
+      }
+
+      for (const method of file.parsed.methods) {
+        const known = counts.get(method.name);
+
+        if (method.className !== declaration.fqn || method.isAbstract || known === undefined) {
+          continue;
+        }
+
+        counts.set(method.name, known + 1);
+      }
+    }
+  }
+
+  return counts;
+}
+
 /**
  * Lists the classes that answer a call to an abstract or interface method.
  *

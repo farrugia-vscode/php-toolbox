@@ -4,7 +4,15 @@ import type { MethodDeclaration } from '../php/members';
 import type { Declaration } from '../php/parser';
 import { getPhpIndex, indexedFile, type IndexedFile } from '../php/phpIndex';
 import { confirm, withProgress } from './apply';
-import { findCallSites, methodAtCursor } from './callSites';
+import { findCallSites, methodAtCursor, type CallSite } from './callSites';
+import { reportUnresolved, type UnresolvedSite } from './unresolved';
+
+/** A call, read as the plain mention the report shows. */
+const callSite = (site: CallSite): UnresolvedSite => ({
+  file: site.file,
+  nameStart: site.call.nameStart,
+  nameEnd: site.call.nameEnd,
+});
 import { memberIndent, memberInsertOffset } from './classEdits';
 import { EditSet } from './editSet';
 import { importEdit, typesUsedIn } from './imports';
@@ -122,7 +130,7 @@ export async function moveMethod(): Promise<void> {
     end: afterLine(source.text, method.end),
   };
   const code = source.text.slice(span.start, span.end);
-  const { sites } = await withProgress(`Moving ${method.name}()…`, () => findCallSites(method));
+  const { sites, unresolved } = await withProgress(`Moving ${method.name}()…`, () => findCallSites(method));
   const byFile = new Map<IndexedFile, EditSet>();
   const add = (file: IndexedFile, edit: { start: number; end: number; text: string }): void => {
     const edits = byFile.get(file) ?? new EditSet();
@@ -187,4 +195,5 @@ export async function moveMethod(): Promise<void> {
   }
 
   vscode.window.showInformationMessage(`${method.name}() moved to ${destination.declaration.name}.`);
+  await reportUnresolved(`${method.name}()`, unresolved.map(callSite));
 }

@@ -1,8 +1,17 @@
 import * as vscode from 'vscode';
 import { getPhpIndex, indexedFile, type IndexedFile } from '../php/phpIndex';
 import { shortNameOf } from '../php/fqn';
-import { askName, confirm, withProgress } from './apply';
-import { findMemberSites, methodAtCursor, receiverFqn, relatedMethods, type MemberRef } from './callSites';
+import { askName, withProgress } from './apply';
+import {
+  findMemberSites,
+  memberFamily,
+  methodAtCursor,
+  projectOf,
+  receiverFqn,
+  type MemberRef,
+  type MemberSite,
+} from './callSites';
+import { reportUnresolved } from './unresolved';
 import { EditSet } from './editSet';
 
 /** The member the cursor is on, with the class that declares it. */
@@ -10,20 +19,16 @@ export interface MemberTarget extends MemberRef {
   file: IndexedFile;
 }
 
-/** Declarations of the same member across the family: overrides, interface, trait. */
+/**
+ * Declarations of the same member across the family: overrides, interface, trait.
+ *
+ * Renaming the method of an interface renames the contract, so every class bound by it has
+ * to be renamed in the same edit — including the ones the class being renamed never names.
+ */
 async function declarations(target: MemberTarget): Promise<Array<{ file: IndexedFile; nameStart: number; nameEnd: number }>> {
-  const files = await getPhpIndex();
-  const family = new Set<string>([target.className]);
-
-  if (target.kind === 'method') {
-    const method = files
-      .flatMap((file) => file.parsed.methods)
-      .find((candidate) => candidate.className === target.className && candidate.name === target.name);
-
-    if (method) {
-      (await relatedMethods(method)).forEach((related) => family.add(related.method.className));
-    }
-  }
+  const project = await projectOf();
+  const files = project.files;
+  const family = memberFamily(project, target);
 
   return files.flatMap((file) => {
     const members =
@@ -61,7 +66,13 @@ function promotedParam(file: IndexedFile, target: MemberTarget): { nameStart: nu
 
 /** The declaring class of what the cursor points at, whether a declaration or a mention. */
 export async function memberAtCursor(file: IndexedFile, offset: number): Promise<MemberTarget | null> {
-  const property = file.parsed.properties.find((candidate) => offset >= candidate.nameStart && offset <= candidate.nameEnd);
+  // `nameStart` sits after the `$`, but a cursor placed just before the name is on it: that
+  // is where a click before `$prices` lands, and missing it hands the rename to another branch.
+  const property = file.parsed.properties.find(
+    (candidate) =>
+      offset >= candidate.nameStart - (file.text[candidate.nameStart - 1] === '$' ? 1 : 0) &&
+      offset <= candidate.nameEnd,
+  );
 
   if (property) {
     return { kind: property.isStatic ? 'staticProperty' : 'property', name: property.name, className: property.className, file };
@@ -111,7 +122,7 @@ async function declaringClass(
     return reference?.fqn ?? null;
   }
 
-  const declared = receiverFqn(file, access.receiverText, offset);
+  const declared = await receiverFqn(file, access.receiverText, offset);
 
   if (declared) {
     return declared;
@@ -134,8 +145,8 @@ export interface MemberRename {
   edit: vscode.WorkspaceEdit;
   count: number;
   files: number;
-  uncertain: number;
-  isNameShared: boolean;
+  /** Mentions of the name the rename did not touch, because nothing attributed them. */
+  unresolved: MemberSite[];
 }
 
 /**
@@ -143,7 +154,7 @@ export interface MemberRename {
  * and each mention the project makes of it.
  */
 export async function buildMemberRename(target: MemberTarget, newName: string): Promise<MemberRename> {
-  const { sites, isNameShared } = await findMemberSites(target);
+  const { sites, unresolved, arguments: promotedArguments } = await findMemberSites(target);
   const byFile = new Map<IndexedFile, EditSet>();
   const add = (host: IndexedFile, nameStart: number, nameEnd: number): void => {
     const edits = byFile.get(host) ?? new EditSet();
@@ -153,6 +164,12 @@ export async function buildMemberRename(target: MemberTarget, newName: string): 
 
   (await declarations(target)).forEach((declaration) => add(declaration.file, declaration.nameStart, declaration.nameEnd));
   sites.forEach((site) => add(site.file, site.nameStart, site.nameEnd));
+
+  // `new Order(total: 10)` names the promoted parameter, so the label follows the rename.
+  // A positional argument names nothing and is left exactly as it is.
+  promotedArguments
+    .filter((argument) => argument.labelStart !== null)
+    .forEach((argument) => add(argument.file, argument.labelStart!, argument.labelEnd!));
 
   const promoted = promotedParam(target.file, target);
 
@@ -170,21 +187,16 @@ export async function buildMemberRename(target: MemberTarget, newName: string): 
     });
   });
 
-  return {
-    edit,
-    count,
-    files: byFile.size,
-    uncertain: sites.filter((site) => !site.isCertain).length,
-    isNameShared,
-  };
+  return { edit, count, files: byFile.size, unresolved };
 }
 
 /**
  * Renames a method, a property or a class constant everywhere the project mentions it.
  *
- * Mentions written on `$this`, `self` or the class name are certain; those made on a plain
- * variable are matched by name, so they are only rewritten once the user has seen how many
- * there are and that another class shares the name.
+ * A mention is rewritten because its receiver was proven to hold the class — through a
+ * typed parameter, a typed property, an assignment or a chain of declared return types —
+ * never because the name matches. Sharing a name with `Builder::exists()` is not a reason
+ * to edit a query someone else wrote.
  */
 export async function renameMember(): Promise<void> {
   const editor = vscode.window.activeTextEditor;
@@ -214,18 +226,10 @@ export async function renameMember(): Promise<void> {
 
   const rename = await withProgress(`Renaming ${target.name}…`, () => buildMemberRename(target, newName));
 
-  if (rename.uncertain > 0 && rename.isNameShared) {
-    const isConfirmed = await confirm(
-      `${rename.uncertain} mention(s) of ${target.name} are written on a variable, and another class declares that name too. Rename them as well?`,
-    );
-
-    if (!isConfirmed) {
-      return;
-    }
-  }
-
   await vscode.workspace.applyEdit(rename.edit, { isRefactoring: true });
   vscode.window.showInformationMessage(
     `Renamed to ${newName} — ${rename.count} edits across ${rename.files} file(s).`,
   );
+
+  await reportUnresolved(target.name, rename.unresolved);
 }
