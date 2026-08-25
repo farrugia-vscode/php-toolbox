@@ -29,11 +29,20 @@ function hasStatements(scope: FunctionScope, start: number, end: number): boolea
   );
 }
 
-/** A local variable assigned exactly once is the only kind that can be inlined. */
-function isInlinableVariable(scope: FunctionScope, offset: number): boolean {
-  const target = scope.uses.find((use) => use.start <= offset && use.end >= offset);
+/**
+ * A local variable assigned exactly once is the only kind that can be inlined.
+ *
+ * The selection may cover the name itself — double-clicking a variable is how most people
+ * point at one — but not a line around it, which is a different question entirely.
+ */
+function isInlinableVariable(scope: FunctionScope, start: number, end: number): boolean {
+  const target = scope.uses.find((use) => use.start <= start && use.end >= start);
 
-  if (!target || target.name === 'this' || scope.params.some((param) => param.name === target.name)) {
+  if (!target || end > target.end) {
+    return false;
+  }
+
+  if (target.name === 'this' || scope.params.some((param) => param.name === target.name)) {
     return false;
   }
 
@@ -87,7 +96,7 @@ function selectionActions(context: CursorContext): vscode.CodeAction[] {
     }
   }
 
-  if (start === end && isInlinableVariable(scope, start)) {
+  if (isInlinableVariable(scope, start, end)) {
     actions.push(action('Inline variable', 'phpToolbox.inlineVariable', INLINE));
   }
 

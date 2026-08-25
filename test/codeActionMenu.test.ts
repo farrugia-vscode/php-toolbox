@@ -81,6 +81,18 @@ describe('what the quick fix menu offers', () => {
     expect(titlesAt(CART, cursor)).toContain('Inline variable');
   });
 
+  test('still offers it when the name itself is selected, as a double click does', () => {
+    const use = CART.indexOf('strtoupper($name)') + 'strtoupper('.length;
+
+    expect(titlesAt(CART, use, use + '$name'.length)).toContain('Inline variable');
+  });
+
+  test('drops it once the selection reaches past the name', () => {
+    const use = CART.indexOf('strtoupper($name)') + 'strtoupper('.length;
+
+    expect(titlesAt(CART, use, use + '$name);'.length)).not.toContain('Inline variable');
+  });
+
   test('offers the method refactorings on a method name', () => {
     const cursor = CART.indexOf('function total(') + 'function '.length + 1;
     const titles = titlesAt(CART, cursor);
