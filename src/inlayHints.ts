@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
-import { astOf } from './php/nodeIndex';
-import { getPhpIndex, indexedFile, type IndexedFile } from './php/phpIndex';
-import type { MethodDeclaration } from './php/members';
+import type { CallArgument, MethodDeclaration } from './php/members';
+import { indexedFile, type IndexedFile } from './php/phpIndex';
+import { declaredMethod, mentionResolution, projectOf, type Project } from './refactor/callSites';
 
 /** A hint to draw: the name of the parameter an argument is passed to. */
 export interface ParameterHint {
@@ -9,121 +9,83 @@ export interface ParameterHint {
   label: string;
 }
 
+/**
+ * The name an argument already carries: `$total`, `now()` and `Carbon::now()` all say `now`
+ * or `total` on their own. Anything else — a literal, an operation, a longer chain — has no
+ * name of its own and returns null.
+ */
+function nameOf(written: string): string | null {
+  const trailing = /(?:^|->|::|\$)(\w+)\s*(?:\(\s*\))?$/.exec(written.trim());
+
+  return trailing ? trailing[1].toLowerCase() : null;
+}
+
 /** Arguments that already say which parameter they fill get no hint. */
-function isSelfExplanatory(argument: any, parameterName: string): boolean {
-  if (argument?.kind === 'variable' && typeof argument.name === 'string') {
-    return argument.name.toLowerCase() === parameterName.toLowerCase();
-  }
-
+function isSelfExplanatory(argument: CallArgument, parameterName: string, text: string): boolean {
   // A named argument carries the parameter name in the source already.
-  return argument?.kind === 'namedargument' || argument?.name?.kind === 'identifier';
+  if (argument.label !== null) {
+    return true;
+  }
+
+  return nameOf(text.slice(argument.start, argument.end)) === parameterName.toLowerCase();
 }
 
-/** The call target written in the source, when it can be named without inferring a type. */
-function calleeOf(node: any, className: string): { type: string; method: string } | null {
-  if (node.kind === 'new' && typeof node.what?.name === 'string') {
-    return { type: node.what.name, method: '__construct' };
-  }
+function hintsFor(declaration: MethodDeclaration, args: CallArgument[], text: string): ParameterHint[] {
+  return declaration.params.flatMap((parameter, index) => {
+    const argument = args[index];
 
-  if (node.kind !== 'call') {
-    return null;
-  }
-
-  const target = node.what;
-
-  if (target?.kind === 'staticlookup' && typeof target.what?.name === 'string') {
-    const name = target.offset?.name;
-    return typeof name === 'string' ? { type: target.what.name, method: name } : null;
-  }
-
-  // `$this->…` is the one member call whose class is known without inference.
-  if (target?.kind === 'propertylookup' && target.what?.kind === 'variable' && target.what.name === 'this') {
-    const name = target.offset?.name;
-    return typeof name === 'string' && className !== '' ? { type: className, method: name } : null;
-  }
-
-  return null;
-}
-
-function declarationFor(
-  files: IndexedFile[],
-  type: string,
-  method: string,
-): MethodDeclaration | null {
-  const shortName = type.split('\\').pop();
-
-  for (const file of files) {
-    const found = file.parsed.methods.find(
-      (candidate) =>
-        candidate.name === method && (candidate.className.split('\\').pop() ?? '') === shortName,
-    );
-
-    if (found) {
-      return found;
+    if (!argument || isSelfExplanatory(argument, parameter.name, text)) {
+      return [];
     }
-  }
 
-  return null;
-}
-
-/** Class the offset sits in, for the `$this->…` calls. */
-function enclosingClassName(file: IndexedFile, offset: number): string {
-  // `start`/`end` are the offsets of the short name; the body is what holds the calls.
-  const declaration = file.parsed.declarations.find(
-    (candidate) => candidate.bodyStart <= offset && candidate.bodyEnd >= offset,
-  );
-
-  return declaration?.name ?? '';
+    return [{ offset: argument.start, label: `${parameter.name}:` }];
+  });
 }
 
 /**
- * Names the arguments of the calls whose target is written in the source — a constructor,
- * a static call, a call on `$this`. A call on a variable needs its type resolved, which is
- * too much work to redo for every call in the viewport.
+ * Names the arguments of the calls in view, whatever the call is written on.
+ *
+ * The receiver is resolved the way a rename resolves it, so a call on a typed variable is
+ * named like a call on `$this`; what nothing can type stays bare rather than guessed at.
  */
 export function parameterHints(
   file: IndexedFile,
-  files: IndexedFile[],
+  project: Project,
   from: number,
   to: number,
 ): ParameterHint[] {
-  const ast = astOf(file.text);
-
-  if (!ast) {
-    return [];
-  }
-
+  // The range is the viewport: a call straddling its edge is half visible, and hints that
+  // come and go with the scroll are worse than hints that stay.
+  const isInView = (start: number, end: number): boolean => end >= from && start <= to;
   const hints: ParameterHint[] = [];
 
-  const walk = (node: any): void => {
-    if (!node || typeof node !== 'object') {
-      return;
+  for (const call of file.parsed.calls) {
+    if (!isInView(call.start, call.end)) {
+      continue;
     }
 
-    if (Array.isArray(node)) {
-      node.forEach(walk);
-      return;
+    const resolution = mentionResolution(project, file, call);
+    const declaration =
+      resolution.kind === 'type' ? declaredMethod(project, resolution.fqn, call.name) : null;
+
+    if (declaration) {
+      hints.push(...hintsFor(declaration, call.args, file.text));
+    }
+  }
+
+  for (const instantiation of file.parsed.instantiations) {
+    const end = instantiation.args[instantiation.args.length - 1]?.end ?? instantiation.nameEnd;
+
+    if (!instantiation.fqn || !isInView(instantiation.nameStart, end)) {
+      continue;
     }
 
-    const isInView = node.loc && node.loc.start.offset >= from && node.loc.end.offset <= to;
+    const declaration = declaredMethod(project, instantiation.fqn, '__construct');
 
-    if (isInView && Array.isArray(node.arguments)) {
-      const callee = calleeOf(node, enclosingClassName(file, node.loc.start.offset));
-      const declaration = callee ? declarationFor(files, callee.type, callee.method) : null;
-
-      (declaration?.params ?? []).forEach((parameter, index) => {
-        const argument = node.arguments[index];
-
-        if (argument?.loc && !isSelfExplanatory(argument, parameter.name)) {
-          hints.push({ offset: argument.loc.start.offset, label: `${parameter.name}:` });
-        }
-      });
+    if (declaration) {
+      hints.push(...hintsFor(declaration, instantiation.args, file.text));
     }
-
-    Object.keys(node).forEach((key) => key !== 'loc' && walk(node[key]));
-  };
-
-  walk(ast);
+  }
 
   return hints;
 }
@@ -136,13 +98,13 @@ export class PhpInlayHintsProvider implements vscode.InlayHintsProvider {
     token: vscode.CancellationToken,
   ): Promise<vscode.InlayHint[]> {
     const file = indexedFile(document.uri, document.getText());
-    const files = await getPhpIndex();
+    const project = await projectOf();
 
     if (token.isCancellationRequested) {
       return [];
     }
 
-    return parameterHints(file, files, document.offsetAt(range.start), document.offsetAt(range.end)).map(
+    return parameterHints(file, project, document.offsetAt(range.start), document.offsetAt(range.end)).map(
       (hint) => {
         const drawn = new vscode.InlayHint(
           document.positionAt(hint.offset),

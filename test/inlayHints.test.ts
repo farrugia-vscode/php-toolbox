@@ -5,6 +5,7 @@ mock.module('vscode', () => vscodeStub);
 
 const { parameterHints } = await import('../src/inlayHints');
 const { indexedFile } = await import('../src/php/phpIndex');
+const { projectFrom } = await import('../src/refactor/callSites');
 
 const SOURCE = `<?php
 
@@ -30,7 +31,7 @@ class Basket
 function hints(text: string): string[] {
   const file = indexedFile(vscodeStub.Uri.file('/app/Basket.php') as never, text);
 
-  return parameterHints(file, [file], 0, text.length).map(
+  return parameterHints(file, projectFrom([file]), 0, text.length).map(
     (hint) => `${hint.label}${text.slice(hint.offset, hint.offset + 8).split(/[,)]/)[0]}`,
   );
 }
@@ -54,5 +55,49 @@ describe('naming the arguments of a call', () => {
     const source = `<?php\nclass A { function f($service) { $service->send('x', 1); } }`;
 
     expect(hints(source)).toEqual([]);
+  });
+
+  test('names a call on a variable once its type is declared', () => {
+    const source = `${SOURCE}
+final class Checkout
+{
+    public function run(Basket $basket): void
+    {
+        $basket->log('paid', true);
+    }
+}
+`;
+
+    expect(hints(source)).toContain("message:'paid'");
+    expect(hints(source)).toContain('isUrgent:true');
+  });
+
+  test('stays quiet when the argument is a call that already says the name', () => {
+    const source = `${SOURCE}
+final class Clock
+{
+    public function tick(Basket $basket): void
+    {
+        $basket->log(message(), true);
+    }
+}
+
+function message(): string
+{
+    return 'x';
+}
+`;
+
+    expect(hints(source)).not.toContain('message:message()');
+  });
+
+  test('keeps the hints of a call the viewport cuts in half', () => {
+    const file = indexedFile(vscodeStub.Uri.file('/app/Basket.php') as never, SOURCE);
+    const call = SOURCE.indexOf("$this->log('done'");
+
+    // A range ending inside the call: what VS Code asks for when it is scrolled to its top.
+    const cut = parameterHints(file, projectFrom([file]), 0, call + 12);
+
+    expect(cut.map((hint) => hint.label)).toContain('message:');
   });
 });
