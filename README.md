@@ -88,8 +88,8 @@ licence key. These fill them in, for PHP files:
 | Go to type definition | on a variable or a member, lands on the class it holds |
 | Go to declaration | on a method, lands on the interface or abstract method it answers |
 | Type hierarchy | supertypes and subtypes, read from the parsed project |
-| Inlay hints | parameter names on constructors, static calls and calls on `$this` |
-| Code lens | references and subtypes above each declaration |
+| Inlay hints | parameter names on every call whose receiver can be typed, silent when the argument already carries the name |
+| Code lens | references and subtypes above each declaration, reads and writes above each property, **PHP: Toggle code lenses** to hide them all |
 | Document links | see *Paths in strings* below |
 | `@mixin` | see just below |
 
@@ -125,13 +125,32 @@ where Intelephense already offers the same list.
 
 ### Find usages
 
+Above a class, an interface, a trait or an enum, a lens counts what names it and what is
+built on it; above an abstract method, what answers it.
+
 **PHP: Find usages**, also offered on a declaration line under `Ctrl+.` together with the
 two refactorings, lists what the workspace does with a type, grouped by intent: implemented by, extended by, used as a
 trait, instantiated, injected, accessed statically.
 
-On a method, a property or a constant, the same action answers with call sites instead —
+On a method, a property or a constant, the same action answers with call sites instead -
 what actually calls that public method. Mentions whose receiver could not be typed are
 listed apart rather than dropped: missing a real call is worse than showing one too many.
+
+On a property, those sites come split by what they do to it: written, read and written,
+read. `$total += 1` and `$total++` land in the middle group because they do both, and
+writing one element (`$lines['k'] = 1`) is a write of the element but a read of the
+property. A promoted constructor parameter is never assigned anywhere, so the arguments
+that build the class count as its writes, `new Order(total: 10)` and
+`parent::__construct($total)` included: without them a `readonly` class reads as never
+written.
+
+Above each property declaration, a lens gives the same two numbers (`12 reads, 1 write`)
+and opens that listing. Set `phpToolbox.propertyAccessLens.enabled` to `false` to hide it -
+on a class with promoted parameters it puts one lens per parameter line.
+
+**PHP: Toggle code lenses** turns every lens of the extension off and on, references
+included, and the choice survives a reload. The counts are worth a glance now and then and
+grey noise the rest of the time, so the answer is a keystroke rather than a setting.
 
 ### Refactorings, in the code action menu
 
@@ -170,6 +189,18 @@ alone. Nothing here needs it.
 | Find implementations    | the cursor on an abstract or interface method    | lists the classes that answer the call, and jumps to one                                       |
 | Implement missing       | a class that implements or extends               | writes the methods the contracts ask for, signatures and imports copied                        |
 | Generate constructor    | the cursor on a class declaration                | takes the chosen properties as parameters and assigns them                                     |
+
+Every refactoring that follows a member across the project — rename, change signature, move,
+inline, safe delete — rewrites a mention only once the receiver was **proven** to hold the
+class. A typed parameter, a typed property, a `new`, an assignment, and a chain of declared
+return types all count as proof, and the proof is followed through the contract: renaming a
+method of an interface renames it on every class bound by that interface.
+
+A name alone is never proof. `$builder->where(...)->exists()` reaches a class the project
+does not declare, so nothing of ours can hide behind it and it is left alone. A receiver
+nothing declares a type for is left alone too, and reported afterwards — those mentions are
+the only place a rename can leave the project broken, so they are shown rather than guessed
+at, and safe delete counts them as usages instead of deleting over them.
 
 Smaller rewrites are offered the same way, and applied straight from the menu:
 
@@ -213,6 +244,8 @@ listed for confirmation before anything is written.
 
 ## Limitations
 
+- A property handed to a function that takes it by reference (`sort($this->lines)`) is
+  counted as read: knowing better means resolving the signature of everything called.
 - Inline method needs a body of one expression, a guard clause, or a call that is a statement of its own.
 - Extract method refuses a selection that jumps out of a loop or yields.
 - An import inside a `use A\{B, C};` group is left alone when the move takes the class out

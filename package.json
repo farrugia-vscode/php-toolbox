@@ -2,7 +2,7 @@
   "name": "php-toolbox",
   "displayName": "PHP Toolbox",
   "description": "Navigate and refactor PHP code the way PhpStorm does: extract and inline, change signature, move members, inherited symbols, usages grouped by intent, workspace-wide rename",
-  "version": "0.3.0",
+  "version": "0.6.1",
   "publisher": "farrugia",
   "icon": "icon.png",
   "engines": {
@@ -30,6 +30,11 @@
           "type": "boolean",
           "default": true,
           "markdownDescription": "Grey out the private members no line of the file uses. Read from the file alone, so a member only reached in a way nothing can follow — a name built at runtime, a trait calling into the class — may be greyed out while still being used."
+        },
+        "phpToolbox.propertyAccessLens.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show how many times each property is read and written above its declaration. A promoted constructor parameter gets its own lens, which makes the signature taller."
         }
       }
     },
@@ -182,6 +187,11 @@
       {
         "command": "phpToolbox.goToTest",
         "title": "Go to test",
+        "category": "PHP"
+      },
+      {
+        "command": "phpToolbox.toggleCodeLens",
+        "title": "Toggle code lenses",
         "category": "PHP"
       }
     ],

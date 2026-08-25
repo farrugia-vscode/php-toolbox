@@ -6,7 +6,7 @@ import { PhpDeclarationProvider, PhpTypeDefinitionProvider } from './typeNavigat
 import { ImportCodeActionProvider } from './refactor/importSymbol';
 import { PhpTypeHierarchyProvider } from './typeHierarchy';
 import { PhpInlayHintsProvider } from './inlayHints';
-import { PhpCodeLensProvider, revealAt } from './codeLens';
+import { initCodeLens, PhpCodeLensProvider, revealAt, toggleCodeLens } from './codeLens';
 import { MixinDefinitionProvider, MixinHoverProvider } from './mixinMemberProviders';
 import { findImplementations } from './findImplementations';
 import { showUsages } from './findUsages';
@@ -129,6 +129,7 @@ async function show(): Promise<void> {
 
 export function activate(context: vscode.ExtensionContext): void {
   warmIndex();
+  initCodeLens(context.workspaceState);
 
   // The autoload map decides where a moved class must land, so a stale copy misplaces files.
   const composer = vscode.workspace.createFileSystemWatcher('**/composer.json');
@@ -227,6 +228,7 @@ export function activate(context: vscode.ExtensionContext): void {
       new PhpCodeLensProvider(),
     ),
     vscode.commands.registerCommand('phpToolbox.revealAt', revealAt),
+    vscode.commands.registerCommand('phpToolbox.toggleCodeLens', toggleCodeLens),
     vscode.languages.registerDefinitionProvider(
       { scheme: 'file', language: 'php' },
       new MixinDefinitionProvider(),
