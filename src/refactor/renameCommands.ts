@@ -14,6 +14,14 @@ export async function renameLocal(): Promise<void> {
   }
 
   const offset = target.selection.start;
+
+  // A promoted parameter is a property. Renaming it as a parameter would leave every
+  // `$this->name` behind, so the member rename answers here whatever the way in was.
+  if (await memberAtCursor(indexedFile(target.document.uri, target.text), offset)) {
+    await renameMember();
+    return;
+  }
+
   const local = localAt(scopesFor(target.document), target.text, offset);
 
   if (!local) {
