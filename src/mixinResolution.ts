@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { isInstanceFactory } from './api';
 import type { Member } from './types';
 import { InheritanceResolver } from './inheritanceResolver';
 import { findAssignment, findParameterType, type Receiver } from './php/assignments';
@@ -245,6 +246,16 @@ export async function resolveVariable(
   if (assigned.kind === 'staticMember') {
     const owner = await resolveTypeName(document, assigned.className, 0, document.lineCount - 1);
     const target = owner ? await typeOfMember(owner, assigned.name) : null;
+
+    return target ? { target, isKnownToServer: false } : null;
+  }
+
+  if (assigned.kind === 'factoryCall') {
+    if (!isInstanceFactory(assigned.callee)) {
+      return null;
+    }
+
+    const target = await resolveTypeName(document, assigned.className, 0, document.lineCount - 1);
 
     return target ? { target, isKnownToServer: false } : null;
   }

@@ -249,9 +249,14 @@ function enterFunction(
     .forEach((use) => parent.uses.push({ ...use, isWrite: false }));
 }
 
-/** The innermost scope containing the offsets, which is the one a refactoring works in. */
-export function scopeAt(scopes: FileScopes, start: number, end: number): FunctionScope | null {
+/** Every scope containing the offsets, innermost first: a closure, then the method holding it. */
+export function enclosingScopes(scopes: FileScopes, start: number, end: number): FunctionScope[] {
   return scopes.functions
     .filter((scope) => scope.bodyStart <= start && scope.bodyEnd >= end)
-    .sort((first, second) => first.bodyEnd - first.bodyStart - (second.bodyEnd - second.bodyStart))[0] ?? null;
+    .sort((first, second) => first.bodyEnd - first.bodyStart - (second.bodyEnd - second.bodyStart));
+}
+
+/** The innermost scope containing the offsets, which is the one a refactoring works in. */
+export function scopeAt(scopes: FileScopes, start: number, end: number): FunctionScope | null {
+  return enclosingScopes(scopes, start, end)[0] ?? null;
 }

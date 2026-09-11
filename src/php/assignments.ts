@@ -4,7 +4,9 @@ import { parseAst } from './engine';
 export type Assigned =
   | { kind: 'member'; receiver: Receiver; name: string }
   | { kind: 'staticMember'; className: string; name: string }
-  | { kind: 'instantiation'; className: string };
+  | { kind: 'instantiation'; className: string }
+  /** `app(Customer::class)`: a function handed a class name, which may well build it. */
+  | { kind: 'factoryCall'; callee: string; className: string };
 
 export type Receiver = { kind: 'variable'; name: string } | { kind: 'this' };
 
@@ -27,8 +29,14 @@ function describe(node: any): Assigned | null {
     return typeof className === 'string' ? { kind: 'instantiation', className } : null;
   }
 
-  // A method call is the same lookup as a property, one level up the tree.
   if (node.kind === 'call') {
+    const className = classArgumentOf(node);
+
+    if (node.what?.kind === 'name' && typeof node.what.name === 'string' && className !== null) {
+      return { kind: 'factoryCall', callee: node.what.name, className };
+    }
+
+    // A method call is the same lookup as a property, one level up the tree.
     return describe(node.what);
   }
 
@@ -56,6 +64,17 @@ function describe(node: any): Assigned | null {
   }
 
   return null;
+}
+
+/** The class a call names as its first argument, `Customer::class`, or null when it names none. */
+function classArgumentOf(call: any): string | null {
+  const argument = call.arguments?.[0];
+
+  if (argument?.kind !== 'staticlookup' || argument.offset?.name !== 'class') {
+    return null;
+  }
+
+  return typeof argument.what?.name === 'string' ? argument.what.name : null;
 }
 
 /** Name of a type node, `?Customer` and `\App\Models\Customer` included. */

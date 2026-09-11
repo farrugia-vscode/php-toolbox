@@ -1,4 +1,4 @@
-import type { MemberAlias } from '../api';
+import { isInstanceFactory, onDidChangeProviders, type MemberAlias } from '../api';
 import { findAssignments, lastAssignment, type AssignmentSite } from '../php/assignments';
 import type { AccessMode, CallArgument, MemberAccess, MethodCall, MethodDeclaration } from '../php/members';
 import { resolve } from '../php/names';
@@ -17,7 +17,7 @@ import {
 } from '../php/receiverType';
 import { scopesOf } from '../php/scopeCache';
 import { indexGeneration } from '../php/phpIndex';
-import { scopeAt } from '../php/scopes';
+import { enclosingScopes, type FileScopes } from '../php/scopes';
 
 /** A method and the file that declares it. */
 export interface MethodLocation {
@@ -255,6 +255,27 @@ function memberTypeText(file: IndexedFile, className: string, link: ChainLink): 
 /** How deep a variable is followed through the variables it was assigned from. */
 const MAX_ASSIGNMENT_DEPTH = 4;
 
+/**
+ * The type the parameter `$name` declares, read from the innermost scope that has one.
+ *
+ * An arrow function or a closure reads the variables of the method it is written in, so
+ * the parameter that types `$order` inside `fn ($line) => $order->total()` is the method's.
+ */
+function declaredParamType(scopes: FileScopes, name: string, offset: number): string | null {
+  for (const scope of enclosingScopes(scopes, offset, offset)) {
+    const param = scope.params.find((candidate) => candidate.name === name);
+
+    if (param) {
+      return param.type;
+    }
+  }
+
+  return null;
+}
+
+/** `app(Customer::class)` written as the start of a chain: the callee, and the class it is handed. */
+const FACTORY_CALL = /^(\\?[A-Za-z_][\w\\]*)\s*\(\s*(\\?[A-Za-z_][\w\\]*)::class\s*\)$/;
+
 function variableResolution(
   project: Project,
   file: IndexedFile,
@@ -262,7 +283,7 @@ function variableResolution(
   offset: number,
   depth: number,
 ): Resolution {
-  const declared = scopeAt(scopesOf(file), offset, offset)?.params.find((param) => param.name === name)?.type;
+  const declared = declaredParamType(scopesOf(file), name, offset);
 
   if (declared) {
     return writtenResolution(project, file, declared);
@@ -276,6 +297,10 @@ function variableResolution(
 
   if (assigned.kind === 'instantiation') {
     return nameResolution(project, file, assigned.className);
+  }
+
+  if (assigned.kind === 'factoryCall') {
+    return isInstanceFactory(assigned.callee) ? nameResolution(project, file, assigned.className) : UNKNOWN;
   }
 
   if (assigned.kind === 'staticMember') {
@@ -311,6 +336,12 @@ function rootResolution(project: Project, file: IndexedFile, root: string, offse
 
   if (instantiated) {
     return nameResolution(project, file, instantiated[1]);
+  }
+
+  const built = FACTORY_CALL.exec(trimmed);
+
+  if (built) {
+    return isInstanceFactory(built[1]) ? nameResolution(project, file, built[2]) : UNKNOWN;
   }
 
   if (/^\\?[A-Za-z_]\w*(?:\\[A-Za-z_]\w*)*$/.test(trimmed)) {
@@ -514,6 +545,12 @@ function countKey(member: MemberRef): string {
  */
 const counted = new Map<string, AccessCount>();
 let countedAt = -1;
+
+// What another extension registers changes which receivers resolve, so every count is due again.
+onDidChangeProviders(() => {
+  counted.clear();
+  countedAt = -1;
+});
 
 /**
  * Counts kept until the project moves. A lens re-runs on every scroll and every switch

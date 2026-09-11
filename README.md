@@ -174,6 +174,10 @@ toolbox?.registerMemberAliasProvider({
     member.returnType === 'Attribute' ? [{ kind: 'property', name: snakeCase(member.name) }] : [],
 });
 
+// Functions that build the class they are handed: `app(Customer::class)->save()` is then a
+// call on a Customer, and `$customer = app(Customer::class)` types the variable.
+toolbox?.registerInstanceFactories(['app', 'resolve']);
+
 // A search the caller ran itself, listed in the same panel.
 await toolbox?.showUsages({ subject: 'orders.index', unit: 'usages', groups: [{ label: 'Usages', entries }] });
 ```

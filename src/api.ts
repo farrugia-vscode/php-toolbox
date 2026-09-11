@@ -58,12 +58,19 @@ export interface MemberAliasProvider {
 export interface PhpToolboxApi {
   registerUsageProvider(provider: UsageProvider): vscode.Disposable;
   registerMemberAliasProvider(provider: MemberAliasProvider): vscode.Disposable;
+  /**
+   * Functions returning an instance of the class named by their first argument, the way
+   * a container does: with `app` registered, `app(Customer::class)->save()` is a call on a
+   * Customer, and `$customer = app(Customer::class)` types the variable.
+   */
+  registerInstanceFactories(functions: string[]): vscode.Disposable;
   /** Lists a search the caller ran itself in the same panel as every other listing. */
   showUsages(listing: UsageListing): Promise<void>;
 }
 
 const usageSources = new Set<UsageProvider>();
 const aliasSources = new Set<MemberAliasProvider>();
+const factorySources = new Set<string[]>();
 const changed = new vscode.EventEmitter<void>();
 
 /** Fires when an extension brings a source or takes one away: what a lens counted is no longer the whole answer. */
@@ -76,6 +83,13 @@ export function usageProviders(): UsageProvider[] {
 /** Every other name the registered extensions reach the member by. */
 export function memberAliases(member: MemberSymbol): MemberAlias[] {
   return [...aliasSources].flatMap((provider) => provider.aliasesOf(member));
+}
+
+/** True when the function is known to build the class it is handed; PHP does not mind the case of a function name. */
+export function isInstanceFactory(callee: string): boolean {
+  const name = callee.replace(/^\\/, '').toLowerCase();
+
+  return [...factorySources].some((functions) => functions.some((candidate) => candidate.toLowerCase() === name));
 }
 
 function register<T>(sources: Set<T>, provider: T): vscode.Disposable {
@@ -92,6 +106,7 @@ export function createApi(): PhpToolboxApi {
   return {
     registerUsageProvider: (provider: UsageProvider) => register(usageSources, provider),
     registerMemberAliasProvider: (provider: MemberAliasProvider) => register(aliasSources, provider),
+    registerInstanceFactories: (functions: string[]) => register(factorySources, functions),
     showUsages: showUsagesView,
   };
 }
