@@ -1,4 +1,6 @@
 import * as vscode from 'vscode';
+import { usageProviders, type UsageSymbol } from './api';
+import { indexedFile } from './php/phpIndex';
 import { getIndex } from './workspaceIndex';
 
 /** A usage of a type, labelled by what the code actually does with it. */
@@ -105,7 +107,51 @@ export async function findUsages(
     }
   }
 
-  return dedupe(usages);
+  return [...dedupe(usages), ...(await providedUsages(name, selfUri, files.get(selfUri.toString()) ?? '', token))];
+}
+
+/**
+ * What the other extensions know about the type: a framework sees a class dispatched or
+ * listened to where the code only shows a name.
+ */
+async function providedUsages(
+  name: string,
+  selfUri: vscode.Uri,
+  selfText: string,
+  token: vscode.CancellationToken,
+): Promise<Usage[]> {
+  const providers = usageProviders();
+
+  if (providers.length === 0) {
+    return [];
+  }
+
+  const declaration = indexedFile(selfUri, selfText).parsed.declarations.find((candidate) => candidate.name === name);
+
+  if (!declaration) {
+    return [];
+  }
+
+  const symbol: UsageSymbol = { name, fqn: declaration.fqn, kind: declaration.kind, uri: selfUri };
+  const usages: Usage[] = [];
+
+  for (const provider of providers) {
+    if (token.isCancellationRequested) {
+      return usages;
+    }
+
+    // Another extension's failure is not this one's to fix, and hiding every lens of the
+    // file behind it would only hide where the failure comes from.
+    const entries = await provider.find(symbol, token).catch((error: unknown) => {
+      console.error(`PHP Toolbox: the "${provider.category}" usage provider failed`, error);
+
+      return [];
+    });
+
+    usages.push(...entries.map((entry) => ({ category: provider.category, uri: entry.uri, range: entry.range, code: entry.label })));
+  }
+
+  return usages;
 }
 
 /** The same line can match two categories; the first one wins, as they are ordered. */
@@ -122,7 +168,12 @@ function dedupe(usages: Usage[]): Usage[] {
   });
 }
 
-export const CATEGORY_ORDER = CATEGORIES.map(({ category }) => category);
+const BUILT_IN_CATEGORIES = CATEGORIES.map(({ category }) => category);
+
+/** The headings of a listing, in reading order: what the code shows first, then what the other extensions add. */
+export function categoryOrder(): string[] {
+  return [...BUILT_IN_CATEGORIES, ...usageProviders().map((provider) => provider.category)];
+}
 
 /** Honouring a contract: what "find implementations" means for an interface. */
 export const IMPLEMENTATION_CATEGORIES = ['Implemented by', 'Extended by'];
@@ -150,6 +201,8 @@ export function descendantSearch(kind: string): { categories: string[]; label: s
  * What is left once the descendants have a listing of their own: repeating them under
  * "references" would only make the answer to "who is built on this" harder to find.
  */
-export const REFERENCE_CATEGORIES = CATEGORY_ORDER.filter(
-  (category) => ![...IMPLEMENTATION_CATEGORIES, ...TRAIT_USER_CATEGORIES].includes(category),
-);
+export function referenceCategories(): string[] {
+  return categoryOrder().filter(
+    (category) => ![...IMPLEMENTATION_CATEGORIES, ...TRAIT_USER_CATEGORIES].includes(category),
+  );
+}

@@ -1,12 +1,7 @@
 import * as vscode from 'vscode';
 import { findClassLikeSymbols, pickEnclosingClass } from './classSymbols';
-import { CATEGORY_ORDER, findUsages, type Usage } from './usages';
-
-const MAX_CODE = 100;
-
-interface UsageQuickPickItem extends vscode.QuickPickItem {
-  usage?: Usage;
-}
+import { categoryOrder, findUsages, type Usage } from './usages';
+import { showUsagesView, type UsageGroup } from './usagesView';
 
 /** Short name of the class, interface or trait the cursor sits in. */
 export async function typeAtCursor(editor: vscode.TextEditor): Promise<string | null> {
@@ -25,39 +20,14 @@ export async function typeAtCursor(editor: vscode.TextEditor): Promise<string | 
   return symbol.name.split('\\').pop() ?? null;
 }
 
-/**
- * One separator per category, so implementations are not drowned among type hints.
- */
-function toItems(usages: Usage[]): UsageQuickPickItem[] {
-  const items: UsageQuickPickItem[] = [];
-
-  for (const category of CATEGORY_ORDER) {
-    const inCategory = usages.filter((usage) => usage.category === category);
-    if (inCategory.length === 0) {
-      continue;
-    }
-
-    items.push({
-      label: `${category} (${inCategory.length})`,
-      kind: vscode.QuickPickItemKind.Separator,
-    });
-
-    inCategory
-      .sort((first, second) => first.uri.fsPath.localeCompare(second.uri.fsPath))
-      .forEach((usage) => {
-        const file = vscode.workspace.asRelativePath(usage.uri);
-        const code = usage.code.length > MAX_CODE ? `${usage.code.slice(0, MAX_CODE)}…` : usage.code;
-
-        items.push({
-          label: `$(file-code)  ${file.split('/').pop()}`,
-          description: `${file} · line ${usage.range.start.line + 1}`,
-          detail: `        ${code}`,
-          usage,
-        });
-      });
-  }
-
-  return items;
+/** One heading per category, so implementations are not drowned among type hints. */
+function groupByCategory(usages: Usage[]): UsageGroup[] {
+  return categoryOrder().map((category) => ({
+    label: category,
+    entries: usages
+      .filter((usage) => usage.category === category)
+      .map((usage) => ({ uri: usage.uri, range: usage.range, label: usage.code })),
+  }));
 }
 
 /** Narrows the search to what the caller asked for: an interface is looked up for its implementations. */
@@ -97,18 +67,5 @@ export async function showUsages(search: UsagesSearch = {}): Promise<void> {
     return;
   }
 
-  const picked = await vscode.window.showQuickPick(toItems(usages), {
-    placeHolder: `${name} — ${usages.length} ${label}`,
-    matchOnDescription: true,
-    matchOnDetail: true,
-  });
-
-  if (!picked?.usage) {
-    return;
-  }
-
-  const document = await vscode.workspace.openTextDocument(picked.usage.uri);
-  const opened = await vscode.window.showTextDocument(document);
-  opened.selection = new vscode.Selection(picked.usage.range.start, picked.usage.range.end);
-  opened.revealRange(picked.usage.range, vscode.TextEditorRevealType.InCenter);
+  await showUsagesView({ subject: name, unit: label, groups: groupByCategory(usages) });
 }

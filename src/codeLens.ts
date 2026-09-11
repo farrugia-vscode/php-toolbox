@@ -3,15 +3,11 @@ import { implementationCounts } from './findImplementations';
 import { indexedFile, type IndexedFile } from './php/phpIndex';
 import type { Declaration } from './php/parser';
 import { accessKey, countMemberUsages, type MemberRef } from './refactor/callSites';
-import { descendantSearch, findUsages, REFERENCE_CATEGORIES, type Usage } from './usages';
+import { descendantSearch, findUsages, referenceCategories, type Usage } from './usages';
+import { plural } from './usagesView';
 
 function countIn(usages: Usage[], categories: string[]): number {
   return usages.filter((usage) => categories.includes(usage.category)).length;
-}
-
-/** "1 reference", "8 references": a lens reads as a sentence, not as a count. */
-function plural(total: number, word: string): string {
-  return `${total} ${total === 1 ? word.replace(/s$/, '') : word}`;
 }
 
 function lens(
@@ -218,12 +214,12 @@ export class PhpCodeLensProvider implements vscode.CodeLensProvider {
 
       const at = file.mapper.at(declaration.start);
       const descendants = descendantSearch(declaration.kind);
-      const references = countIn(usages, REFERENCE_CATEGORIES);
+      const references = countIn(usages, referenceCategories());
       const built = countIn(usages, descendants.categories);
 
       lenses.push(
         lens(at, plural(references, 'references'), 'phpToolbox.findUsages', document.uri, [
-          { categories: REFERENCE_CATEGORIES, label: 'references' },
+          { categories: referenceCategories(), label: 'references' },
         ]),
       );
 

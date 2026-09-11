@@ -4,6 +4,7 @@ import type { Declaration } from './php/parser';
 import { getPhpIndex, indexedFile, type IndexedFile } from './php/phpIndex';
 import { withProgress } from './refactor/apply';
 import { methodAtCursor } from './refactor/callSites';
+import { showUsagesView } from './usagesView';
 
 interface Implementation {
   file: IndexedFile;
@@ -121,29 +122,19 @@ export async function findImplementations(): Promise<void> {
     return;
   }
 
-  const picked = await vscode.window.showQuickPick(
-    implementations.map((implementation) => ({
-      label: `$(symbol-class) ${implementation.className.split('\\').pop()}`,
-      description: implementation.className,
-      detail: vscode.workspace.asRelativePath(implementation.file.uri),
-      implementation,
-    })),
-    {
-      title: `${implementations.length} implementation(s) of ${location.method.name}()`,
-      matchOnDescription: true,
-      matchOnDetail: true,
-    },
-  );
-
-  if (!picked) {
-    return;
-  }
-
-  const { file: target, method } = picked.implementation;
-  const document = await vscode.workspace.openTextDocument(target.uri);
-  const opened = await vscode.window.showTextDocument(document);
-  const range = target.mapper.range(method.nameStart, method.nameEnd);
-
-  opened.selection = new vscode.Selection(range.start, range.end);
-  opened.revealRange(range, vscode.TextEditorRevealType.InCenter);
+  await showUsagesView({
+    subject: `${location.method.name}()`,
+    unit: 'implementations',
+    groups: [
+      {
+        label: 'Implemented by',
+        entries: implementations.map(({ file, method, className }) => ({
+          uri: file.uri,
+          range: file.mapper.range(method.nameStart, method.nameEnd),
+          label: className.split('\\').pop() ?? className,
+          description: className,
+        })),
+      },
+    ],
+  });
 }

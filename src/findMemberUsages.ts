@@ -3,10 +3,7 @@ import type { AccessMode } from './php/members';
 import { findMemberSites, type MemberSearch, type MemberSite } from './refactor/callSites';
 import { indexedFile } from './php/phpIndex';
 import { memberAtCursor, type MemberTarget } from './refactor/renameMember';
-
-interface SiteQuickPickItem extends vscode.QuickPickItem {
-  site?: MemberSite;
-}
+import { showUsagesView, type UsageEntry, type UsageGroup } from './usagesView';
 
 /** The line a mention sits on, trimmed: enough to recognise the call without opening it. */
 function lineAt(site: MemberSite): string {
@@ -23,24 +20,18 @@ const ACCESS_LABELS: Array<{ access: AccessMode; label: string }> = [
   { access: 'read', label: 'read' },
 ];
 
-function toItems(search: MemberSearch): SiteQuickPickItem[] {
-  const group = (label: string, group: MemberSite[]): SiteQuickPickItem[] =>
-    group.length === 0
-      ? []
-      : [
-          { label: `${label} (${group.length})`, kind: vscode.QuickPickItemKind.Separator },
-          ...group.map((site) => ({
-            label: lineAt(site),
-            description: vscode.workspace.asRelativePath(site.file.uri),
-            site,
-          })),
-        ];
+function entryOf(site: MemberSite): UsageEntry {
+  return { uri: site.file.uri, range: site.file.mapper.range(site.nameStart, site.nameEnd), label: lineAt(site) };
+}
+
+function groupByAccess(search: MemberSearch): UsageGroup[] {
+  const group = (label: string, sites: MemberSite[]): UsageGroup => ({ label, entries: sites.map(entryOf) });
 
   const sites = [...search.sites, ...search.arguments];
   // A method is called and nothing else: splitting its sites would only add an empty heading.
   const found = sites.every((site) => site.access === undefined)
-    ? group('usages', sites)
-    : ACCESS_LABELS.flatMap(({ access, label }) =>
+    ? [group('usages', sites)]
+    : ACCESS_LABELS.map(({ access, label }) =>
         group(
           label,
           sites.filter((site) => site.access === access),
@@ -52,17 +43,8 @@ function toItems(search: MemberSearch): SiteQuickPickItem[] {
     // Mentions of the name whose receiver nothing declared a type for. They may or may not
     // be this member, so no refactoring touches them — but hiding them would hide the one
     // place where a rename can leave the project broken.
-    ...group('receiver type unknown', search.unresolved),
+    group('receiver type unknown', search.unresolved),
   ];
-}
-
-async function reveal(site: MemberSite): Promise<void> {
-  const document = await vscode.workspace.openTextDocument(site.file.uri);
-  const editor = await vscode.window.showTextDocument(document);
-  const position = document.positionAt(site.nameStart);
-
-  editor.selection = new vscode.Selection(position, position);
-  editor.revealRange(new vscode.Range(position, position), vscode.TextEditorRevealType.InCenter);
 }
 
 /** What to call the thing being searched, in the progress message and the picker. */
@@ -103,12 +85,5 @@ export async function showMemberUsages(): Promise<void> {
     return;
   }
 
-  const picked = await vscode.window.showQuickPick(toItems(search), {
-    placeHolder: `${name}, ${search.sites.length + search.arguments.length} usages`,
-    matchOnDescription: true,
-  });
-
-  if (picked?.site) {
-    await reveal(picked.site);
-  }
+  await showUsagesView({ subject: name, unit: 'usages', groups: groupByAccess(search) });
 }

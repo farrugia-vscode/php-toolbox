@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { createApi, type PhpToolboxApi } from './api';
 import { KIND_ICON, findClassLikeSymbols, pickEnclosingClass } from './classSymbols';
 import { MixinCompletionProvider } from './completion/mixinCompletionProvider';
 import { PhpFoldingRangeProvider, PhpSelectionRangeProvider } from './editorRanges';
@@ -37,6 +38,7 @@ import type { Member } from './types';
 import { ConventionCodeActionProvider } from './conventions/fixes';
 import { registerConventions } from './conventions/reporter';
 import { registerUnusedMembers } from './unusedMembers';
+import { registerUsagesView } from './usagesView';
 import { warmIndex } from './workspaceIndex';
 
 interface MemberQuickPickItem extends vscode.QuickPickItem {
@@ -129,7 +131,7 @@ async function show(): Promise<void> {
   opened.revealRange(picked.member.range, vscode.TextEditorRevealType.InCenter);
 }
 
-export function activate(context: vscode.ExtensionContext): void {
+export function activate(context: vscode.ExtensionContext): PhpToolboxApi {
   warmIndex();
   initCodeLens(context.workspaceState);
 
@@ -176,6 +178,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.languages.registerRenameProvider({ scheme: 'file', language: 'php' }, new PhpRenameProvider()),
     registerUnusedMembers(),
     registerConventions(),
+    registerUsagesView(),
     registerFileMoveSync(),
     composer,
     vscode.languages.registerCodeActionsProvider(
@@ -251,6 +254,8 @@ export function activate(context: vscode.ExtensionContext): void {
       '/',
     ),
   );
+
+  return createApi();
 }
 
 export function deactivate(): void {}

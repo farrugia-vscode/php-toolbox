@@ -130,7 +130,8 @@ built on it; above an abstract method, what answers it.
 
 **PHP: Find usages**, also offered on a declaration line under `Ctrl+.` together with the
 two refactorings, lists what the workspace does with a type, grouped by intent: implemented by, extended by, used as a
-trait, instantiated, injected, accessed statically.
+trait, instantiated, injected, accessed statically. The listing opens in the **PHP Usages**
+panel, one fold per heading and per file.
 
 On a method, a property or a constant, the same action answers with call sites instead -
 what actually calls that public method. Mentions whose receiver could not be typed are
@@ -151,6 +152,24 @@ on a class with promoted parameters it puts one lens per parameter line.
 **PHP: Toggle code lenses** turns every lens of the extension off and on, references
 included, and the choice survives a reload. The counts are worth a glance now and then and
 grey noise the rest of the time, so the answer is a keystroke rather than a setting.
+
+### For other extensions
+
+The extension exports an API, so a framework extension adds what it knows instead of
+counting again with a lens and a popup of its own:
+
+```ts
+const toolbox = await vscode.extensions.getExtension<PhpToolboxApi>('farrugia.php-toolbox')?.activate();
+
+// Its entries join the lens count above the class and get a heading of their own in the panel.
+toolbox?.registerUsageProvider({
+  category: 'Listened by',
+  find: async (symbol, token) => [{ uri, range, label: 'OrderPlacedListener' }],
+});
+
+// A search the caller ran itself, listed in the same panel.
+await toolbox?.showUsages({ subject: 'orders.index', unit: 'usages', groups: [{ label: 'Usages', entries }] });
+```
 
 ### Refactorings, in the code action menu
 
