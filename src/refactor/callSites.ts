@@ -462,7 +462,10 @@ function variableResolution(
   const declared = declaredParamType(scopesOf(file), name, offset);
 
   if (declared) {
-    return writtenResolution(project, file, declared);
+    // `fn (self $page)`: the parameter is typed with the class the closure is written in.
+    return isSelfType(declared)
+      ? knownResolution(project, enclosingOf(file, offset)?.fqn ?? null)
+      : writtenResolution(project, file, declared);
   }
 
   const site = depth < MAX_ASSIGNMENT_DEPTH ? lastAssignmentSite(assignmentsIn(file), name, offset) : null;

@@ -52,6 +52,11 @@ final class ShowOutreachController
             return $qrCode->execute($url, 'black');
         };
     }
+
+    public function execute(string $url, string $ink): string
+    {
+        return array_map(fn (self $controller): string => $controller->execute($url, $ink), [$this])[0];
+    }
 }
 `,
   ],
@@ -80,6 +85,7 @@ const { createApi } = await import('../src/api');
 const { findMemberSites } = await import('../src/refactor/callSites');
 
 const qrCodeExecute = { kind: 'method' as const, name: 'execute', className: 'App\\Support\\BookingQrCode' };
+const controllerExecute = { kind: 'method' as const, name: 'execute', className: 'App\\Http\\Controllers\\ShowOutreachController' };
 const storageExecute = { kind: 'method' as const, name: 'execute', className: 'App\\Services\\TenantStorage' };
 
 const lineOf = (site: { file: { text: string }; nameStart: number }) =>
@@ -98,6 +104,14 @@ describe('a variable captured by a nested function', () => {
       "$storage->execute('a');",
       "app(TenantStorage::class)->execute('b');",
       "resolve(TenantStorage::class)->execute('c');",
+    ]);
+  });
+
+  test('is typed by the enclosing class when the parameter says self', async () => {
+    const search = await findMemberSites(controllerExecute);
+
+    expect(search.sites.map(lineOf)).toEqual([
+      'return array_map(fn (self $controller): string => $controller->execute($url, $ink), [$this])[0];',
     ]);
   });
 

@@ -28,10 +28,23 @@ final class Checkout
     {
     }
 
-    public function run(): void
+    // Fired by "new OrderPlaced" below, never by OrderPlaced::dispatch() from here.
+    private OrderPlaced|null $last = null;
+
+    /** @see OrderPlaced::dispatch() */
+    private string $url = 'https://example.test/orders'; // not new OrderPlaced()
+
+    public function run(OrderShipped|OrderPlaced $event): OrderPlaced|null
     {
         event(new OrderPlaced());
         OrderPlaced::dispatch();
+        $this->last = new OrderPlaced;
+
+        try {
+            return $event instanceof OrderPlaced ? $event : null;
+        } catch (OrderPlaced) {
+            return null;
+        }
     }
 }
 `,
@@ -52,12 +65,17 @@ const token = { isCancellationRequested: false } as never;
 const declaring = Uri.parse('file:///p/app/Events/OrderPlaced.php') as never;
 
 describe('the usages of a type', () => {
-  test('are read from the code, grouped by what it does with the type', async () => {
+  test('are read from the code, grouped by what it does with the type, unions and bare forms included', async () => {
     const usages = await findUsages('OrderPlaced', declaring, token);
 
     expect(usages.map((usage) => `${usage.category}: ${usage.code}`)).toEqual([
       'Instantiated: event(new OrderPlaced());',
+      'Instantiated: $this->last = new OrderPlaced;',
+      'Checked with instanceof: return $event instanceof OrderPlaced ? $event : null;',
       'Injected or type hinted: public function __construct(private OrderPlaced $placed)',
+      'Injected or type hinted: private OrderPlaced|null $last = null;',
+      'Injected or type hinted: public function run(OrderShipped|OrderPlaced $event): OrderPlaced|null',
+      'Injected or type hinted: } catch (OrderPlaced) {',
       'Static access: OrderPlaced::dispatch();',
     ]);
     expect(usages.every((usage) => referenceCategories().includes(usage.category))).toBe(true);
@@ -94,7 +112,7 @@ describe('the usages of a type', () => {
     console.error = () => {};
 
     try {
-      expect((await findUsages('OrderPlaced', declaring, token)).length).toBe(3);
+      expect((await findUsages('OrderPlaced', declaring, token)).length).toBe(8);
     } finally {
       console.error = errors;
       registration.dispose();

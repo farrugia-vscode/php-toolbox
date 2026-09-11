@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { usageProviders, type UsageSymbol } from './api';
+import { withoutComments } from './php/comments';
 import { indexedFile } from './php/phpIndex';
 import { getIndex } from './workspaceIndex';
 
@@ -29,13 +30,30 @@ const CATEGORIES: Array<{ category: string; pattern: (name: string) => string }>
     pattern: (name) => `^\\s*use\\s+\\\\?[\\w\\\\]*?\\b(${name})\\b\\s*[;{]`,
   },
   {
+    // `new Foo`, `new Foo(`, `new App\\Foo`: the parentheses are optional in PHP.
     category: 'Instantiated',
-    pattern: (name) => `\\bnew\\s+\\\\?[\\w\\\\]*?\\b(${name})\\s*\\(`,
+    pattern: (name) => `\\bnew\\s+\\\\?[\\w\\\\]*?\\b(${name})\\b(?![\\w\\\\])`,
   },
   {
+    category: 'Checked with instanceof',
+    pattern: (name) => `\\binstanceof\\s+\\\\?[\\w\\\\]*?\\b(${name})\\b(?![\\w\\\\])`,
+  },
+  {
+    // A parameter or a property, promoted or not, a return type, a `catch`: each may be a
+    // union the name sits anywhere in, and a `catch` may name no variable at all.
     category: 'Injected or type hinted',
-    pattern: (name) =>
-      `(?:[(,]\\s*(?:(?:public|protected|private|readonly)\\s+)*\\??\\\\?[\\w\\\\]*?\\b(${name})\\b\\s+[.$&]|:\\s*\\??\\\\?[\\w\\\\]*?\\b(${name})\\b)`,
+    pattern: (name) => {
+      const before = `(?:\\??\\\\?[\\w\\\\]+\\s*[|&]\\s*)*`;
+      const after = `(?:\\s*[|&]\\s*\\??\\\\?[\\w\\\\]+)*`;
+      const named = `\\??\\\\?[\\w\\\\]*?\\b(${name})\\b`;
+
+      return [
+        `[(,]\\s*(?:(?:public|protected|private|readonly)\\s+)*${before}${named}${after}\\s+[.$&]`,
+        `^\\s*(?:(?:public|protected|private|readonly|static)\\s+)+${before}${named}${after}\\s+\\$`,
+        `:\\s*${before}${named}`,
+        `\\bcatch\\s*\\(\\s*${before}${named}`,
+      ].join('|');
+    },
   },
   {
     category: 'Static access',
@@ -79,16 +97,18 @@ export async function findUsages(
 
     const target = vscode.Uri.parse(uri);
     const lines = text.split('\n');
+    // A name in a comment is a mention, not a usage: the code is read with them blanked out.
+    const readable = withoutComments(text);
 
     for (const { category, pattern } of CATEGORIES) {
       const regex = new RegExp(pattern(name), 'gm');
-      let match = regex.exec(text);
+      let match = regex.exec(readable);
 
       while (match !== null) {
         const found = match.slice(1).find((group) => group !== undefined);
 
         if (found) {
-          const start = positionOf(text, match.index + match[0].lastIndexOf(found));
+          const start = positionOf(readable, match.index + match[0].lastIndexOf(found));
           const code = (lines[start.line] ?? '').trim();
           const isSelf = target.toString() === selfUri.toString();
 
@@ -102,7 +122,7 @@ export async function findUsages(
           }
         }
 
-        match = regex.exec(text);
+        match = regex.exec(readable);
       }
     }
   }
