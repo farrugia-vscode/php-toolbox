@@ -36,6 +36,73 @@ export interface Declaration {
   parent: string | null;
   interfaces: string[];
   traits: string[];
+  /** What the docblock above the declaration adds to it. */
+  annotated: Annotations;
+}
+
+/** A member the docblock declares, `@property Customer $customer` or `@method static self query()`. */
+export interface AnnotatedMember {
+  name: string;
+  /** The type as written after the tag, null for a `@method` that writes none. */
+  type: string | null;
+}
+
+/**
+ * Members and types a docblock adds to a class: ide-helper writes the columns and the
+ * relations of a model this way, and `@mixin` pulls in a whole class of them.
+ */
+export interface Annotations {
+  properties: AnnotatedMember[];
+  methods: AnnotatedMember[];
+  /** Fully qualified `@mixin` targets. */
+  mixins: string[];
+}
+
+const PROPERTY_TAG = /@property(?:-read|-write)?\s+(\S+)\s+\$(\w+)/g;
+const METHOD_TAG = /@method\s+(?:static\s+)?(?:(\S+)\s+)?(\w+)\s*\(/g;
+const MIXIN_TAG = /@mixin\s+(\\?[\w\\]+)/g;
+
+/**
+ * The docblock a declaration sits under: the last `/** ... *\/` before it, with nothing
+ * but attributes and blank lines in between.
+ */
+export function docblockBefore(text: string, offset: number): string | null {
+  const before = text.slice(0, offset);
+  const start = before.lastIndexOf('/**');
+  const end = start === -1 ? -1 : before.indexOf('*/', start);
+
+  if (end === -1 || !/^(?:\s|#\[[^\n]*\]|final|abstract|readonly)*$/.test(before.slice(end + 2))) {
+    return null;
+  }
+
+  return before.slice(start, end + 2);
+}
+
+/** What the tags of a docblock declare, the `@mixin` names resolved as the file would resolve them. */
+function annotationsOf(docblock: string | null, resolveWritten: (written: string) => string | null): Annotations {
+  const annotations: Annotations = { properties: [], methods: [], mixins: [] };
+
+  if (docblock === null) {
+    return annotations;
+  }
+
+  for (const match of docblock.matchAll(PROPERTY_TAG)) {
+    annotations.properties.push({ name: match[2], type: match[1] });
+  }
+
+  for (const match of docblock.matchAll(METHOD_TAG)) {
+    annotations.methods.push({ name: match[2], type: match[1] ?? null });
+  }
+
+  for (const match of docblock.matchAll(MIXIN_TAG)) {
+    const fqn = resolveWritten(match[1]);
+
+    if (fqn) {
+      annotations.mixins.push(fqn);
+    }
+  }
+
+  return annotations;
 }
 
 /** How a name was written: fully qualified, qualified, relative or bare. */
@@ -155,6 +222,9 @@ export function parseFile(text: string): ParsedFile {
     }
   };
 
+  const resolveWritten = (written: string): string | null =>
+    resolve(written, written.startsWith('\\') ? 'fqn' : 'uqn', parsed.namespace, aliases);
+
   const declare = (node: any): Declaration => {
     const name = node.name.name;
     const bodyStart = text.indexOf('{', node.name.loc.end.offset);
@@ -171,6 +241,7 @@ export function parseFile(text: string): ParsedFile {
       parent: fqnOf(node.extends),
       interfaces: (node.implements ?? []).map(fqnOf).filter(Boolean) as string[],
       traits: [],
+      annotated: annotationsOf(docblockBefore(text, node.loc.start.offset), resolveWritten),
     };
   };
 

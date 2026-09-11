@@ -2,8 +2,9 @@ import { parseAst } from './engine';
 
 /** What a variable was assigned from: enough to look the type up, no more. */
 export type Assigned =
-  | { kind: 'member'; receiver: Receiver; name: string }
-  | { kind: 'staticMember'; className: string; name: string }
+  /** `$site->customer` or `$site->customer()`: a property read, or a method called, on a receiver. */
+  | { kind: 'member'; receiver: Receiver; name: string; isCall: boolean }
+  | { kind: 'staticMember'; className: string; name: string; isCall: boolean }
   | { kind: 'instantiation'; className: string }
   /** `app(Customer::class)`: a function handed a class name, which may well build it. */
   | { kind: 'factoryCall'; callee: string; className: string }
@@ -53,8 +54,11 @@ function describeShape(node: any): Assigned | null {
       return { kind: 'factoryCall', callee: node.what.name, className };
     }
 
-    // A method call is the same lookup as a property, one level up the tree.
-    return describeShape(node.what);
+    // A method call is the same lookup as a property, one level up the tree, but the
+    // member it names is a method: the type asked for is what it returns.
+    const callee = describeShape(node.what);
+
+    return callee && (callee.kind === 'member' || callee.kind === 'staticMember') ? { ...callee, isCall: true } : callee;
   }
 
   // `Configuration::pricing()`: the type is whatever the static method returns.
@@ -66,7 +70,7 @@ function describeShape(node: any): Assigned | null {
       return null;
     }
 
-    return { kind: 'staticMember', className, name };
+    return { kind: 'staticMember', className, name, isCall: false };
   }
 
   if (node.kind === 'propertylookup' || node.kind === 'nullsafepropertylookup') {
@@ -77,7 +81,7 @@ function describeShape(node: any): Assigned | null {
       return null;
     }
 
-    return { kind: 'member', receiver, name };
+    return { kind: 'member', receiver, name, isCall: false };
   }
 
   return null;

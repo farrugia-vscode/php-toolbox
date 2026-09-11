@@ -199,13 +199,19 @@ function enclosingOf(file: IndexedFile, offset: number): Declaration | null {
   return enclosing.sort((first, second) => first.bodyEnd - first.bodyStart - (second.bodyEnd - second.bodyStart))[0] ?? null;
 }
 
+/** What a class says about a member: a type, `null` for one declared without a type, `undefined` when it says nothing. */
+type TypeAnswer = (file: IndexedFile, declaration: Declaration) => string | null | undefined;
+
 /**
- * The type a member of `fqn` answers with, looked up through the hierarchy.
- *
- * A hierarchy that leaves the project answers `foreign`: the member is declared by a
- * dependency, so it is not ours whatever its name says.
+ * The first answer up the hierarchy of `fqn`: parents, interfaces, traits and `@mixin`
+ * targets, each asked in turn. `leavesProject` says whether the walk met a type of
+ * someone else's on the way.
  */
-function memberType(project: Project, fqn: string, link: ChainLink): Resolution {
+function hierarchyAnswer(
+  project: Project,
+  fqn: string,
+  answer: TypeAnswer,
+): { written: string | null | undefined; file: IndexedFile | null; leavesProject: boolean } {
   const seen = new Set<string>();
   const queue = [fqn];
   let leavesProject = false;
@@ -226,17 +232,42 @@ function memberType(project: Project, fqn: string, link: ChainLink): Resolution 
       continue;
     }
 
-    const written = memberTypeText(owner, current, link);
+    const written = answer(owner, declaration);
 
     if (written !== undefined) {
-      if (written === null) {
-        return UNKNOWN;
-      }
-
-      return isSelfType(written) ? typeResolution(fqn) : writtenResolution(project, owner, written);
+      return { written, file: owner, leavesProject };
     }
 
-    queue.push(declaration.parent ?? '', ...declaration.interfaces, ...declaration.traits);
+    queue.push(declaration.parent ?? '', ...declaration.interfaces, ...declaration.traits, ...declaration.annotated.mixins);
+  }
+
+  return { written: undefined, file: null, leavesProject };
+}
+
+/**
+ * The type a member of `fqn` answers with, looked up through the hierarchy.
+ *
+ * The kind the link asks for comes first, code and docblock alike: a relation is a method
+ * in the code and a property in the docblock of an `@mixin`, and read as a property it is
+ * the docblock that says what it holds. The other kind, a method read as a property, is a
+ * last resort once the whole hierarchy has been asked.
+ *
+ * A hierarchy that leaves the project answers `foreign`: the member is declared by a
+ * dependency, so it is not ours whatever its name says.
+ */
+function memberType(project: Project, fqn: string, link: ChainLink): Resolution {
+  const asked = hierarchyAnswer(project, fqn, (file, declaration) =>
+    firstTypeText(memberTypeText(file, declaration.fqn, link, true), annotatedTypeText(declaration, link)),
+  );
+  const found = asked.written !== undefined ? asked : hierarchyAnswer(project, fqn, (file, declaration) => memberTypeText(file, declaration.fqn, link, false));
+
+  if (found.written !== undefined && found.file !== null) {
+    if (found.written === null) {
+      return UNKNOWN;
+    }
+
+    // The written name means what the file declaring the member says it means.
+    return isSelfType(found.written) ? typeResolution(fqn) : writtenResolution(project, found.file, found.written);
   }
 
   // Nothing of ours declares the member: a framework may still know what it answers with,
@@ -247,18 +278,35 @@ function memberType(project: Project, fqn: string, link: ChainLink): Resolution 
     return knownResolution(project, provided.replace(/^\\/, ''));
   }
 
-  return leavesProject ? FOREIGN : UNKNOWN;
+  return found.leavesProject ? FOREIGN : UNKNOWN;
 }
 
-/** The type written on a member, `null` when it declares none and `undefined` when absent. */
-function memberTypeText(file: IndexedFile, className: string, link: ChainLink): string | null | undefined {
+/** The first type written among the answers; `null` when one is declared without a type, `undefined` when none says anything. */
+function firstTypeText(...answers: Array<string | null | undefined>): string | null | undefined {
+  return answers.find((answer) => answer !== undefined && answer !== null) ?? (answers.includes(null) ? null : undefined);
+}
+
+/** The type a docblock tag gives the member, `null` for a `@method` without one and `undefined` when no tag names it. */
+function annotatedTypeText(declaration: Declaration, link: ChainLink): string | null | undefined {
+  const tagged = link.isCall ? declaration.annotated.methods : declaration.annotated.properties;
+
+  return tagged.find((member) => member.name === link.name)?.type;
+}
+
+/**
+ * The type written on a member, `null` when it declares none and `undefined` when absent.
+ *
+ * The kind the link asks for is a method for a call and a property for an access; the
+ * other kind answers when `isExact` is false, for a method read as a property.
+ */
+function memberTypeText(file: IndexedFile, className: string, link: ChainLink, isExact: boolean): string | null | undefined {
   const method = file.parsed.methods.find(
     (candidate) => candidate.className === className && candidate.name === link.name,
   );
   const property = file.parsed.properties.find(
     (candidate) => candidate.className === className && candidate.name === link.name,
   );
-  const found = link.isCall ? (method ?? property) : (property ?? method);
+  const found = link.isCall === isExact ? method : property;
 
   if (!found) {
     return undefined;
@@ -328,7 +376,7 @@ function variableResolution(
     const owner = nameResolution(project, file, assigned.className);
 
     return owner.kind === 'type'
-      ? memberType(project, owner.fqn, { name: assigned.name, isCall: true })
+      ? memberType(project, owner.fqn, { name: assigned.name, isCall: assigned.isCall })
       : owner;
   }
 
@@ -339,7 +387,7 @@ function variableResolution(
       ? knownResolution(project, enclosingOf(file, site.start)?.fqn ?? null)
       : variableResolution(project, file, assigned.receiver.name, site.start, depth + 1);
 
-  return receiver.kind === 'type' ? memberType(project, receiver.fqn, { name: assigned.name, isCall: true }) : receiver;
+  return receiver.kind === 'type' ? memberType(project, receiver.fqn, { name: assigned.name, isCall: assigned.isCall }) : receiver;
 }
 
 /** `registerDomain()` as the start of a chain: a plain function, typed by what it declares it returns. */
