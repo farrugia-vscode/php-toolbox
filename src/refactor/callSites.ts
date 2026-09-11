@@ -15,6 +15,7 @@ import {
   type Resolution,
 } from '../php/receiverType';
 import { scopesOf } from '../php/scopeCache';
+import { indexGeneration } from '../php/phpIndex';
 import { scopeAt } from '../php/scopes';
 
 /** A method and the file that declares it. */
@@ -479,12 +480,51 @@ export function accessKey(member: Pick<MemberRef, 'className' | 'name'>): string
 }
 
 /**
- * Reads and writes of several properties, counted in a single pass over the project.
+ * Reads and writes of several members, counted in a single pass over the project.
  *
- * A lens asks the question for every property of the file at once, and a pass per property
- * would read the whole project as many times as the class has fields.
+ * A lens asks the question for every member of the file at once, and a pass per member
+ * would read the whole project as many times as the class has fields. A method is only
+ * ever called, so its calls land in `read` and its `written` stays at zero.
  */
-export async function countPropertyAccesses(members: MemberRef[]): Promise<Map<string, AccessCount>> {
+const counted = new Map<string, AccessCount>();
+let countedAt = -1;
+
+/**
+ * Counts kept until the project moves. A lens re-runs on every scroll and every switch
+ * back to a file, and the answer cannot have changed unless something was parsed again.
+ */
+function cachedCounts(members: MemberRef[]): Map<string, AccessCount> | null {
+  const generation = indexGeneration();
+
+  if (generation !== countedAt) {
+    counted.clear();
+    countedAt = generation;
+
+    return null;
+  }
+
+  const known = new Map<string, AccessCount>();
+
+  for (const member of members) {
+    const count = counted.get(accessKey(member));
+
+    if (count === undefined) {
+      return null;
+    }
+
+    known.set(accessKey(member), count);
+  }
+
+  return known;
+}
+
+export async function countMemberUsages(members: MemberRef[]): Promise<Map<string, AccessCount>> {
+  const known = cachedCounts(members);
+
+  if (known !== null) {
+    return known;
+  }
+
   const project = await projectOf();
   const counts = new Map<string, AccessCount>();
   const families = new Map<string, Set<string>>();
@@ -495,11 +535,29 @@ export async function countPropertyAccesses(members: MemberRef[]): Promise<Map<s
     const family = memberFamily(project, member);
 
     families.set(key, family);
-    counts.set(key, { read: 0, written: promotedWrites(project, family, member).length });
+    counts.set(key, {
+      read: 0,
+      written: member.kind === 'method' ? 0 : promotedWrites(project, family, member).length,
+    });
     byName.set(member.name, [...(byName.get(member.name) ?? []), member]);
   }
 
   for (const file of project.files) {
+    for (const call of file.parsed.calls) {
+      for (const member of byName.get(call.name) ?? []) {
+        if (member.kind !== 'method') {
+          continue;
+        }
+
+        const resolution = mentionResolution(project, file, call);
+        const key = accessKey(member);
+
+        if (resolution.kind === 'type' && families.get(key)?.has(resolution.fqn)) {
+          counts.get(key)!.read += 1;
+        }
+      }
+    }
+
     for (const access of file.parsed.accesses) {
       const candidates = byName.get(access.name) ?? [];
 
@@ -527,6 +585,8 @@ export async function countPropertyAccesses(members: MemberRef[]): Promise<Map<s
       }
     }
   }
+
+  counts.forEach((count, key) => counted.set(key, count));
 
   return counts;
 }

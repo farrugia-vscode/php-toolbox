@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { implementationCounts } from './findImplementations';
 import { indexedFile, type IndexedFile } from './php/phpIndex';
 import type { Declaration } from './php/parser';
-import { accessKey, countPropertyAccesses } from './refactor/callSites';
+import { accessKey, countMemberUsages, type MemberRef } from './refactor/callSites';
 import { descendantSearch, findUsages, REFERENCE_CATEGORIES, type Usage } from './usages';
 
 function countIn(usages: Usage[], categories: string[]): number {
@@ -62,24 +62,92 @@ async function methodLenses(
     );
 }
 
+/** A lens is worth a line only when the setting for that kind of member says so. */
+function lensEnabled(key: string): boolean {
+  return vscode.workspace.getConfiguration('phpToolbox').get(`${key}.enabled`, true);
+}
+
+/** How a count reads for the kind of member it counts. */
+function countLabel(member: MemberRef, count: { read: number; written: number }): string {
+  if (member.kind === 'method') {
+    return plural(count.read, 'calls');
+  }
+
+  if (member.kind === 'constant') {
+    return plural(count.read, 'usages');
+  }
+
+  return `${plural(count.read, 'reads')}, ${plural(count.written, 'writes')}`;
+}
+
 /**
- * What a property is subjected to, which is the question a field raises: a value read
+ * Every member of the file worth counting, private ones included: what a private method
+ * costs to change is exactly the question the file cannot answer at a glance.
+ *
+ * A constructor is left out. It is not called by name, and its promoted parameters
+ * already carry a lens of their own on that very line.
+ */
+function countableMembers(file: IndexedFile): Array<MemberRef & { nameStart: number }> {
+  const members: Array<MemberRef & { nameStart: number }> = [];
+
+  if (lensEnabled('propertyAccessLens')) {
+    members.push(
+      ...file.parsed.properties
+        .filter((property) => property.className.length > 0)
+        .map((property) => ({
+          kind: 'property' as const,
+          name: property.name,
+          className: property.className,
+          nameStart: property.nameStart,
+        })),
+    );
+  }
+
+  if (lensEnabled('methodUsageLens')) {
+    members.push(
+      ...file.parsed.methods
+        .filter((method) => method.className.length > 0 && method.name !== '__construct')
+        .map((method) => ({
+          kind: 'method' as const,
+          name: method.name,
+          className: method.className,
+          nameStart: method.nameStart,
+        })),
+    );
+  }
+
+  if (lensEnabled('constantUsageLens')) {
+    members.push(
+      ...file.parsed.constants
+        .filter((constant) => constant.className.length > 0)
+        .map((constant) => ({
+          kind: 'constant' as const,
+          name: constant.name,
+          className: constant.className,
+          nameStart: constant.nameStart,
+        })),
+    );
+  }
+
+  return members;
+}
+
+/**
+ * What a member is subjected to, which is the question a declaration raises: a value read
  * everywhere and written in one place is a very different thing from one written from
  * anywhere. A promoted parameter counts the arguments that build it as its writes.
  */
-async function propertyLenses(file: IndexedFile, uri: vscode.Uri): Promise<vscode.CodeLens[]> {
-  const properties = file.parsed.properties.filter((property) => property.className.length > 0);
+async function memberLenses(file: IndexedFile, uri: vscode.Uri): Promise<vscode.CodeLens[]> {
+  const members = countableMembers(file);
 
-  if (properties.length === 0 || !vscode.workspace.getConfiguration('phpToolbox').get('propertyAccessLens.enabled', true)) {
+  if (members.length === 0) {
     return [];
   }
 
-  const counts = await countPropertyAccesses(
-    properties.map((property) => ({ kind: 'property' as const, name: property.name, className: property.className })),
-  );
+  const counts = await countMemberUsages(members);
 
-  return properties.flatMap((property) => {
-    const count = counts.get(accessKey(property));
+  return members.flatMap((member) => {
+    const count = counts.get(accessKey(member));
 
     if (!count || count.read + count.written === 0) {
       return [];
@@ -87,8 +155,8 @@ async function propertyLenses(file: IndexedFile, uri: vscode.Uri): Promise<vscod
 
     return [
       lens(
-        file.mapper.at(property.nameStart),
-        `${plural(count.read, 'reads')}, ${plural(count.written, 'writes')}`,
+        file.mapper.at(member.nameStart),
+        countLabel(member, count),
         'phpToolbox.findMemberUsages',
         uri,
       ),
@@ -168,7 +236,7 @@ export class PhpCodeLensProvider implements vscode.CodeLensProvider {
       lenses.push(...(await methodLenses(file, declaration, document.uri)));
     }
 
-    lenses.push(...(await propertyLenses(file, document.uri)));
+    lenses.push(...(await memberLenses(file, document.uri)));
 
     return lenses;
   }

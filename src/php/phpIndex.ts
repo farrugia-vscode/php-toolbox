@@ -16,8 +16,19 @@ const PARSE_BATCH_SIZE = 40;
 const cache = new Map<string, IndexedFile>();
 let watching = false;
 
+let generation = 0;
+
 function forget(uri: vscode.Uri): void {
   cache.delete(uri.toString());
+  generation += 1;
+}
+
+/**
+ * Changes whenever the parsed project can have moved, saved or not. Anything derived from
+ * the whole project is only worth keeping as long as this number holds.
+ */
+export function indexGeneration(): number {
+  return generation;
 }
 
 /** Unsaved edits are what the user sees, so they win over the indexed copy. */
@@ -60,6 +71,14 @@ export async function getPhpIndex(): Promise<IndexedFile[]> {
   if (!watching) {
     watching = true;
     onDidChangeFile(forget);
+
+    // An unsaved edit changes what the index answers without touching a file, and the
+    // lens runs against that very text.
+    vscode.workspace.onDidChangeTextDocument((event) => {
+      if (event.document.languageId === 'php') {
+        generation += 1;
+      }
+    });
   }
 
   const files = await getIndex();

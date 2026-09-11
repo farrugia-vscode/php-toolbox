@@ -34,6 +34,8 @@ import { safeDelete } from './refactor/safeDelete';
 import { changeSignature, introduceParameter } from './refactor/signatureCommands';
 import { PhpCodeActionProvider } from './menu/provider';
 import type { Member } from './types';
+import { ConventionCodeActionProvider } from './conventions/fixes';
+import { registerConventions } from './conventions/reporter';
 import { registerUnusedMembers } from './unusedMembers';
 import { warmIndex } from './workspaceIndex';
 
@@ -173,6 +175,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('phpToolbox.pushMemberDown', pushMemberDown),
     vscode.languages.registerRenameProvider({ scheme: 'file', language: 'php' }, new PhpRenameProvider()),
     registerUnusedMembers(),
+    registerConventions(),
     registerFileMoveSync(),
     composer,
     vscode.languages.registerCodeActionsProvider(
@@ -198,6 +201,11 @@ export function activate(context: vscode.ExtensionContext): void {
       { scheme: 'file', language: 'php' },
       new CreateFromUsageCodeActionProvider(),
       { providedCodeActionKinds: CreateFromUsageCodeActionProvider.providedCodeActionKinds },
+    ),
+    vscode.languages.registerCodeActionsProvider(
+      { scheme: 'file', language: 'php' },
+      new ConventionCodeActionProvider(),
+      { providedCodeActionKinds: ConventionCodeActionProvider.providedCodeActionKinds },
     ),
     vscode.languages.registerFoldingRangeProvider(
       { scheme: 'file', language: 'php' },

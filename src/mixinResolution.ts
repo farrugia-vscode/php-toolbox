@@ -3,7 +3,7 @@ import type { Member } from './types';
 import { InheritanceResolver } from './inheritanceResolver';
 import { findAssignment, findParameterType, type Receiver } from './php/assignments';
 import { findDeclaredType } from './php/declaredType';
-import { findReceiverMember, findReceiverVariable } from './php/receiverChain';
+import { findReceiverMember, findReceiverVariable, type ReceiverMember } from './php/receiverChain';
 import { mixinMembers } from './completion/mixinMembers';
 import { normalizeDefinition } from './typeReferences';
 import { onDidChangeFile } from './workspaceIndex';
@@ -255,10 +255,17 @@ export async function resolveVariable(
   return target ? { target, isKnownToServer: false } : null;
 }
 
-/** The class of a `foo()->` chain, resolved from the declared type of the member called. */
+/**
+ * The class of a `foo()->` chain, resolved from the declared type of the member called.
+ *
+ * The server is asked first, then our own `@property` reading takes over: a member the
+ * server cannot type is exactly a member a `@mixin` carries, and while we hold the server
+ * for that question our own definition provider steps aside to avoid a loop.
+ */
 async function resolveCallChain(
   document: vscode.TextDocument,
   offset: number,
+  hops = 0,
 ): Promise<Receiverclass | null> {
   const receiver = findReceiverMember(document.getText(), offset);
 
@@ -266,6 +273,32 @@ async function resolveCallChain(
     return null;
   }
 
+  return (
+    (await resolveMemberFromServer(document, receiver)) ??
+    (await resolveMemberFromMixins(document, receiver, hops))
+  );
+}
+
+/** The class the receiving member holds, read from the `@property` a mixin wrote for it. */
+async function resolveMemberFromMixins(
+  document: vscode.TextDocument,
+  receiver: ReceiverMember,
+  hops: number,
+): Promise<Receiverclass | null> {
+  if (hops > MAX_HOPS) {
+    return null;
+  }
+
+  const owner = await receiverClassAt(document, receiver.offset, hops + 1);
+  const target = owner ? await typeOfMember(owner.target, receiver.name) : null;
+
+  return target ? { target, isKnownToServer: false } : null;
+}
+
+async function resolveMemberFromServer(
+  document: vscode.TextDocument,
+  receiver: ReceiverMember,
+): Promise<Receiverclass | null> {
   const definition = normalizeDefinition(
     await askServer(() =>
       vscode.commands.executeCommand<Array<vscode.Location | vscode.LocationLink>>(
@@ -311,13 +344,14 @@ async function resolveCallChain(
 export async function receiverClassAt(
   document: vscode.TextDocument,
   offset: number,
+  hops = 0,
 ): Promise<Receiverclass | null> {
   const text = document.getText();
   const variable = findReceiverVariable(text, offset);
 
   if (variable) {
-    return resolveVariable(document, document.positionAt(variable.offset), variable.name);
+    return resolveVariable(document, document.positionAt(variable.offset), variable.name, hops);
   }
 
-  return resolveCallChain(document, offset);
+  return resolveCallChain(document, offset, hops);
 }

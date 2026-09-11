@@ -68,6 +68,7 @@ export class EventEmitter<T> {
 
 export const workspace = {
   textDocuments: [] as Array<{ isDirty: boolean; uri: Uri; getText(): string }>,
+  onDidChangeTextDocument: (): { dispose(): void } => ({ dispose: () => {} }),
 };
 
 /** Only the kinds the extension names; the numbers match the real API. */

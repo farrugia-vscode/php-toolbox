@@ -196,7 +196,7 @@ export function parseFile(text: string): ParsedFile {
       const declaration = declare(node);
       parsed.declarations.push(declaration);
       scope = declaration.fqn;
-    } else if (node.kind === 'usetrait') {
+    } else if (node.kind === 'traituse') {
       const owner = parsed.declarations.find((candidate) => candidate.fqn === className);
       (node.traits ?? []).forEach((trait: any) => {
         const fqn = fqnOf(trait);

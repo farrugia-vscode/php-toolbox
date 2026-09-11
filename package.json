@@ -2,7 +2,7 @@
   "name": "php-toolbox",
   "displayName": "PHP Toolbox",
   "description": "Navigate and refactor PHP code the way PhpStorm does: extract and inline, change signature, move members, inherited symbols, usages grouped by intent, workspace-wide rename",
-  "version": "0.6.1",
+  "version": "0.7.2",
   "publisher": "farrugia",
   "icon": "icon.png",
   "engines": {
@@ -35,6 +35,56 @@
           "type": "boolean",
           "default": true,
           "description": "Show how many times each property is read and written above its declaration. A promoted constructor parameter gets its own lens, which makes the signature taller."
+        },
+        "phpToolbox.methodUsageLens.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show how many times each method is called above its declaration, private ones included."
+        },
+        "phpToolbox.constantUsageLens.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show how many times each class constant is used above its declaration, private ones included."
+        },
+        "phpToolbox.conventions.booleanPrefix.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Report a boolean whose name does not start with is, has, should, must, can, was or will."
+        },
+        "phpToolbox.conventions.actionVerb.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Report a method named to* rather than after a verb."
+        },
+        "phpToolbox.conventions.contractMethods": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [
+            "toArray",
+            "toJson",
+            "toString",
+            "toMail",
+            "toDatabase",
+            "toBroadcast",
+            "toResponse",
+            "toSql"
+          ],
+          "markdownDescription": "Method names `to*` may keep. A framework calls these by name, so renaming one breaks the code rather than the convention."
+        },
+        "phpToolbox.conventions.immutableService.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Report a class built by constructor injection that is not declared final readonly."
+        },
+        "phpToolbox.conventions.braces.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Report a block whose body is written on the line of its condition, without braces."
+        },
+        "phpToolbox.conventions.emDash.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Report an em dash written inside a string."
         }
       }
     },

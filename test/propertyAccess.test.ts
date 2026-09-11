@@ -76,7 +76,7 @@ mock.module('../src/workspaceIndex', () => ({
 }));
 
 const { parseFile } = await import('../src/php/parser');
-const { accessKey, countPropertyAccesses, findMemberSites } = await import('../src/refactor/callSites');
+const { accessKey, countMemberUsages, findMemberSites } = await import('../src/refactor/callSites');
 
 function accessesOf(body: string): Record<string, string> {
   const source = `<?php
@@ -172,7 +172,7 @@ describe('a promoted property, which nothing ever assigns', () => {
 
 describe('counting reads and writes in one pass', () => {
   test('splits both numbers, constructor arguments included', async () => {
-    const counts = await countPropertyAccesses([
+    const counts = await countMemberUsages([
       { kind: 'property', name: 'monthlyCents', className: 'App\\Billing\\Pricing' },
     ]);
 
