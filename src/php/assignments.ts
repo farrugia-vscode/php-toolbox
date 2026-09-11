@@ -6,7 +6,9 @@ export type Assigned =
   | { kind: 'staticMember'; className: string; name: string }
   | { kind: 'instantiation'; className: string }
   /** `app(Customer::class)`: a function handed a class name, which may well build it. */
-  | { kind: 'factoryCall'; callee: string; className: string };
+  | { kind: 'factoryCall'; callee: string; className: string }
+  /** Any other chain of calls and accesses, kept as written for whoever can follow it. */
+  | { kind: 'expression'; text: string };
 
 export type Receiver = { kind: 'variable'; name: string } | { kind: 'this' };
 
@@ -18,8 +20,23 @@ function receiverOf(node: any): Receiver | null {
   return node.name === 'this' ? { kind: 'this' } : { kind: 'variable', name: node.name };
 }
 
-/** Reads `$site->customer`, `Config::pricing()` and `new Customer()`; anything else is skipped. */
-function describe(node: any): Assigned | null {
+const CHAIN_KINDS = new Set(['call', 'propertylookup', 'nullsafepropertylookup', 'staticlookup']);
+
+/**
+ * Reads `$site->customer`, `Config::pricing()` and `new Customer()` for what they are; a
+ * longer chain, `$this->reader->record()`, is kept as text and followed link by link later.
+ */
+function describe(node: any, text: string): Assigned | null {
+  const described = describeShape(node);
+
+  if (described || !CHAIN_KINDS.has(node?.kind) || !node.loc) {
+    return described;
+  }
+
+  return { kind: 'expression', text: text.slice(node.loc.start.offset, node.loc.end.offset) };
+}
+
+function describeShape(node: any): Assigned | null {
   if (!node || typeof node !== 'object') {
     return null;
   }
@@ -37,7 +54,7 @@ function describe(node: any): Assigned | null {
     }
 
     // A method call is the same lookup as a property, one level up the tree.
-    return describe(node.what);
+    return describeShape(node.what);
   }
 
   // `Configuration::pricing()`: the type is whatever the static method returns.
@@ -174,7 +191,7 @@ export function findAssignments(text: string): AssignmentSite[] {
     }
 
     if (node.kind === 'assign' && node.left?.kind === 'variable' && typeof node.left.name === 'string') {
-      const assigned = describe(node.right);
+      const assigned = describe(node.right, text);
 
       if (assigned && node.loc) {
         found.push({ name: node.left.name, start: node.loc.start.offset, assigned });
@@ -194,7 +211,7 @@ export function findAssignments(text: string): AssignmentSite[] {
  * in a loop or a branch reads with the type it was given closest above the cursor, which
  * is what someone looking at the line expects.
  */
-export function lastAssignment(sites: AssignmentSite[], name: string, offset: number): Assigned | null {
+export function lastAssignmentSite(sites: AssignmentSite[], name: string, offset: number): AssignmentSite | null {
   let closest: AssignmentSite | null = null;
 
   for (const site of sites) {
@@ -203,7 +220,11 @@ export function lastAssignment(sites: AssignmentSite[], name: string, offset: nu
     }
   }
 
-  return closest?.assigned ?? null;
+  return closest;
+}
+
+export function lastAssignment(sites: AssignmentSite[], name: string, offset: number): Assigned | null {
+  return lastAssignmentSite(sites, name, offset)?.assigned ?? null;
 }
 
 export function findAssignment(text: string, name: string, offset: number): Assigned | null {

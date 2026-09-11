@@ -49,6 +49,26 @@ export interface MemberAliasProvider {
   aliasesOf(member: MemberSymbol): MemberAlias[];
 }
 
+/** A member asked about, with everything the owner inherits from, project or not. */
+export interface MemberQuestion {
+  owner: string;
+  /** Fully qualified ancestors, interfaces and traits, the ones outside the project included. */
+  lineage: string[];
+  name: string;
+  isCall: boolean;
+}
+
+/**
+ * The type of a member no declaration in the project writes down.
+ *
+ * `Order::query()->first()` is an Order because the framework says so, not the class: what
+ * such a provider answers is looked up before the hierarchy is walked out of the project.
+ */
+export interface MemberTypeProvider {
+  /** A class name as the owner's file would resolve it, or null when the provider has no say. */
+  typeOf(member: MemberQuestion): string | null;
+}
+
 /**
  * What `activate()` hands to the extensions that ask for it.
  *
@@ -64,6 +84,7 @@ export interface PhpToolboxApi {
    * Customer, and `$customer = app(Customer::class)` types the variable.
    */
   registerInstanceFactories(functions: string[]): vscode.Disposable;
+  registerMemberTypeProvider(provider: MemberTypeProvider): vscode.Disposable;
   /** Lists a search the caller ran itself in the same panel as every other listing. */
   showUsages(listing: UsageListing): Promise<void>;
 }
@@ -71,6 +92,7 @@ export interface PhpToolboxApi {
 const usageSources = new Set<UsageProvider>();
 const aliasSources = new Set<MemberAliasProvider>();
 const factorySources = new Set<string[]>();
+const memberTypeSources = new Set<MemberTypeProvider>();
 const changed = new vscode.EventEmitter<void>();
 
 /** Fires when an extension brings a source or takes one away: what a lens counted is no longer the whole answer. */
@@ -83,6 +105,19 @@ export function usageProviders(): UsageProvider[] {
 /** Every other name the registered extensions reach the member by. */
 export function memberAliases(member: MemberSymbol): MemberAlias[] {
   return [...aliasSources].flatMap((provider) => provider.aliasesOf(member));
+}
+
+/** The first type a registered extension gives the member, or null when none has a say. */
+export function providedMemberType(member: MemberQuestion): string | null {
+  for (const provider of memberTypeSources) {
+    const answer = provider.typeOf(member);
+
+    if (answer !== null) {
+      return answer;
+    }
+  }
+
+  return null;
 }
 
 /** True when the function is known to build the class it is handed; PHP does not mind the case of a function name. */
@@ -107,6 +142,7 @@ export function createApi(): PhpToolboxApi {
     registerUsageProvider: (provider: UsageProvider) => register(usageSources, provider),
     registerMemberAliasProvider: (provider: MemberAliasProvider) => register(aliasSources, provider),
     registerInstanceFactories: (functions: string[]) => register(factorySources, functions),
+    registerMemberTypeProvider: (provider: MemberTypeProvider) => register(memberTypeSources, provider),
     showUsages: showUsagesView,
   };
 }

@@ -250,6 +250,12 @@ export async function resolveVariable(
     return target ? { target, isKnownToServer: false } : null;
   }
 
+  // A longer chain is followed by the usage search, which reads the whole project; here
+  // the server is asked one hop at a time, and a chain has no single hop to ask about.
+  if (assigned.kind === 'expression') {
+    return null;
+  }
+
   if (assigned.kind === 'factoryCall') {
     if (!isInstanceFactory(assigned.callee)) {
       return null;

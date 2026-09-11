@@ -59,6 +59,8 @@ export interface ParsedFile {
   declarations: Declaration[];
   references: Reference[];
   methods: MethodDeclaration[];
+  /** Plain functions, declared by the file outside any class: a helper, a Pest fixture. */
+  functions: MethodDeclaration[];
   properties: PropertyDeclaration[];
   constants: ClassConstant[];
   calls: MethodCall[];
@@ -78,6 +80,7 @@ export function parseFile(text: string): ParsedFile {
     declarations: [],
     references: [],
     methods: [],
+    functions: [],
     properties: [],
     constants: [],
     calls: [],
@@ -204,6 +207,8 @@ export function parseFile(text: string): ParsedFile {
           owner.traits.push(fqn);
         }
       });
+    } else if (node.kind === 'function' && node.name?.loc) {
+      parsed.functions.push(methodFrom(node, text, ''));
     } else if (node.kind === 'method' && node.name?.loc) {
       const method = methodFrom(node, text, className);
       parsed.methods.push(method);

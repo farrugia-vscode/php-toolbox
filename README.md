@@ -178,6 +178,13 @@ toolbox?.registerMemberAliasProvider({
 // call on a Customer, and `$customer = app(Customer::class)` types the variable.
 toolbox?.registerInstanceFactories(['app', 'resolve']);
 
+// The type of a call no class of the project declares: `Order::query()->first()` is an
+// Order because the framework says so. Asked before the hierarchy is given up on as foreign.
+toolbox?.registerMemberTypeProvider({
+  typeOf: ({ owner, lineage, name, isCall }) =>
+    isCall && lineage.includes('Illuminate\\Database\\Eloquent\\Model') && name === 'first' ? owner : null,
+});
+
 // A search the caller ran itself, listed in the same panel.
 await toolbox?.showUsages({ subject: 'orders.index', unit: 'usages', groups: [{ label: 'Usages', entries }] });
 ```

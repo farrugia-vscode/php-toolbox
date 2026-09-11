@@ -7,6 +7,14 @@ export class Position {
     public readonly line: number,
     public readonly character: number,
   ) {}
+
+  translate(lineDelta = 0, characterDelta = 0): Position {
+    return new Position(this.line + lineDelta, this.character + characterDelta);
+  }
+
+  compareTo(other: Position): number {
+    return this.line - other.line || this.character - other.character;
+  }
 }
 
 export class Range {
@@ -77,6 +85,45 @@ export class Disposable {
 export const workspace = {
   textDocuments: [] as Array<{ isDirty: boolean; uri: Uri; getText(): string }>,
   onDidChangeTextDocument: (): { dispose(): void } => ({ dispose: () => {} }),
+  asRelativePath: (uri: Uri | string): string => (typeof uri === 'string' ? uri : uri.path).replace(/^\/p\//, ''),
+};
+
+export enum TreeItemCollapsibleState {
+  None = 0,
+  Collapsed = 1,
+  Expanded = 2,
+}
+
+export class TreeItem {
+  id?: string;
+  description?: string;
+  tooltip?: string;
+  resourceUri?: Uri;
+  iconPath?: unknown;
+  command?: { command: string; title: string; arguments?: unknown[] };
+
+  constructor(
+    public readonly label: string,
+    public readonly collapsibleState: TreeItemCollapsibleState = TreeItemCollapsibleState.None,
+  ) {}
+}
+
+export class ThemeIcon {
+  static readonly File = new ThemeIcon('file');
+
+  constructor(public readonly id: string) {}
+}
+
+/** What the last `createTreeView` was given, so a test can drive the provider by hand. */
+export const createdTreeViews: Array<{ id: string; treeDataProvider: any; description?: string }> = [];
+
+/** Commands run through the stub, in order. */
+export const executedCommands: Array<{ command: string; arguments: unknown[] }> = [];
+
+export const commands = {
+  executeCommand: async (command: string, ...args: unknown[]): Promise<void> => {
+    executedCommands.push({ command, arguments: args });
+  },
 };
 
 /** Only the kinds the extension names; the numbers match the real API. */
@@ -94,6 +141,12 @@ export const SymbolKind = {
 
 export const window = {
   showWarningMessage: (message: string): void => console.warn(message),
+  createTreeView: (id: string, options: { treeDataProvider: any }): { id: string; treeDataProvider: any; description?: string; dispose(): void } => {
+    const view = { id, treeDataProvider: options.treeDataProvider, description: undefined as string | undefined, dispose: () => {} };
+    createdTreeViews.push(view);
+
+    return view;
+  },
 };
 
 /** Applies a stub workspace edit to the given text, so a test can assert on the result. */

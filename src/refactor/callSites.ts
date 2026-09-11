@@ -1,5 +1,5 @@
-import { isInstanceFactory, onDidChangeProviders, type MemberAlias } from '../api';
-import { findAssignments, lastAssignment, type AssignmentSite } from '../php/assignments';
+import { isInstanceFactory, onDidChangeProviders, providedMemberType, type MemberAlias } from '../api';
+import { findAssignments, lastAssignmentSite, type AssignmentSite } from '../php/assignments';
 import type { AccessMode, CallArgument, MemberAccess, MethodCall, MethodDeclaration } from '../php/members';
 import { resolve } from '../php/names';
 import type { Declaration } from '../php/parser';
@@ -100,6 +100,8 @@ export interface Project {
   files: IndexedFile[];
   owners: Map<string, IndexedFile>;
   declarations: Map<string, Declaration>;
+  /** Plain functions by lower-cased name: a Pest helper, a global helper of the app. */
+  functions: Map<string, MethodLocation>;
 }
 
 export async function projectOf(): Promise<Project> {
@@ -110,15 +112,20 @@ export async function projectOf(): Promise<Project> {
 export function projectFrom(files: IndexedFile[]): Project {
   const owners = new Map<string, IndexedFile>();
   const declarations = new Map<string, Declaration>();
+  const functions = new Map<string, MethodLocation>();
 
   for (const file of files) {
     for (const declaration of file.parsed.declarations) {
       owners.set(declaration.fqn, file);
       declarations.set(declaration.fqn, declaration);
     }
+
+    for (const method of file.parsed.functions) {
+      functions.set(method.name.toLowerCase(), { file, method });
+    }
   }
 
-  return { files, owners, declarations };
+  return { files, owners, declarations, functions };
 }
 
 const aliasCache = new WeakMap<IndexedFile, Map<string, string>>();
@@ -232,6 +239,14 @@ function memberType(project: Project, fqn: string, link: ChainLink): Resolution 
     queue.push(declaration.parent ?? '', ...declaration.interfaces, ...declaration.traits);
   }
 
+  // Nothing of ours declares the member: a framework may still know what it answers with,
+  // which is asked before the hierarchy is given up on as foreign.
+  const provided = providedMemberType({ owner: fqn, lineage: ancestorsOf(project, fqn), name: link.name, isCall: link.isCall });
+
+  if (provided !== null) {
+    return knownResolution(project, provided.replace(/^\\/, ''));
+  }
+
   return leavesProject ? FOREIGN : UNKNOWN;
 }
 
@@ -289,11 +304,13 @@ function variableResolution(
     return writtenResolution(project, file, declared);
   }
 
-  const assigned = depth < MAX_ASSIGNMENT_DEPTH ? lastAssignment(assignmentsIn(file), name, offset) : null;
+  const site = depth < MAX_ASSIGNMENT_DEPTH ? lastAssignmentSite(assignmentsIn(file), name, offset) : null;
 
-  if (!assigned) {
+  if (!site) {
     return UNKNOWN;
   }
+
+  const { assigned } = site;
 
   if (assigned.kind === 'instantiation') {
     return nameResolution(project, file, assigned.className);
@@ -301,6 +318,10 @@ function variableResolution(
 
   if (assigned.kind === 'factoryCall') {
     return isInstanceFactory(assigned.callee) ? nameResolution(project, file, assigned.className) : UNKNOWN;
+  }
+
+  if (assigned.kind === 'expression') {
+    return chainResolution(project, file, assigned.text, site.start, depth + 1);
   }
 
   if (assigned.kind === 'staticMember') {
@@ -311,16 +332,29 @@ function variableResolution(
       : owner;
   }
 
+  // What the variable was read from is resolved where it was assigned: a receiver
+  // reassigned further down must not change what was held up here.
   const receiver =
     assigned.receiver.kind === 'this'
-      ? knownResolution(project, enclosingOf(file, offset)?.fqn ?? null)
-      : variableResolution(project, file, assigned.receiver.name, offset, depth + 1);
+      ? knownResolution(project, enclosingOf(file, site.start)?.fqn ?? null)
+      : variableResolution(project, file, assigned.receiver.name, site.start, depth + 1);
 
   return receiver.kind === 'type' ? memberType(project, receiver.fqn, { name: assigned.name, isCall: true }) : receiver;
 }
 
-/** The expression a chain starts from: `$this`, a type name, a `new`, or a variable. */
-function rootResolution(project: Project, file: IndexedFile, root: string, offset: number): Resolution {
+/** `registerDomain()` as the start of a chain: a plain function, typed by what it declares it returns. */
+const FUNCTION_CALL = /^\\?([A-Za-z_]\w*)\s*\(/;
+
+/** A whole chain, `$this->reader->record()->value`, followed from its root link by link. */
+function chainResolution(project: Project, file: IndexedFile, text: string, offset: number, depth: number): Resolution {
+  const chain = splitChain(text);
+  const root = rootResolution(project, file, chain.root, offset, depth);
+
+  return followChain(root, chain.links, { memberType: (fqn, link) => memberType(project, fqn, link) });
+}
+
+/** The expression a chain starts from: `$this`, a type name, a `new`, a call, or a variable. */
+function rootResolution(project: Project, file: IndexedFile, root: string, offset: number, depth = 0): Resolution {
   const trimmed = root.trim();
   const lowered = trimmed.toLowerCase();
 
@@ -344,6 +378,16 @@ function rootResolution(project: Project, file: IndexedFile, root: string, offse
     return isInstanceFactory(built[1]) ? nameResolution(project, file, built[2]) : UNKNOWN;
   }
 
+  const called = FUNCTION_CALL.exec(trimmed);
+
+  if (called) {
+    const declared = project.functions.get(called[1].toLowerCase());
+
+    // The return type is read in the file declaring the function: that is where its
+    // imports say what the written name means.
+    return declared?.method.returnType ? writtenResolution(project, declared.file, declared.method.returnType) : UNKNOWN;
+  }
+
   if (/^\\?[A-Za-z_]\w*(?:\\[A-Za-z_]\w*)*$/.test(trimmed)) {
     return nameResolution(project, file, trimmed);
   }
@@ -351,7 +395,7 @@ function rootResolution(project: Project, file: IndexedFile, root: string, offse
   const variable = /^\$(\w+)$/.exec(trimmed);
 
   if (variable) {
-    return variableResolution(project, file, variable[1], offset, 0);
+    return variableResolution(project, file, variable[1], offset, depth);
   }
 
   return UNKNOWN;
