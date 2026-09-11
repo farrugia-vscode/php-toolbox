@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { memberAliases } from './api';
 import type { AccessMode } from './php/members';
 import { findMemberSites, type MemberSearch, type MemberSite } from './refactor/callSites';
 import { indexedFile } from './php/phpIndex';
@@ -13,11 +14,15 @@ function lineAt(site: MemberSite): string {
   return site.file.text.slice(start, end === -1 ? undefined : end).trim();
 }
 
-/** The three questions asked of a property, in the order they are asked. */
-const ACCESS_LABELS: Array<{ access: AccessMode; label: string }> = [
+/**
+ * The three questions asked of a property, in the order they are asked. A method served as
+ * a property is still callable, so its calls come last, under a heading of their own.
+ */
+const ACCESS_LABELS: Array<{ access: AccessMode | undefined; label: string }> = [
   { access: 'write', label: 'written' },
   { access: 'readwrite', label: 'read and written' },
   { access: 'read', label: 'read' },
+  { access: undefined, label: 'called' },
 ];
 
 function entryOf(site: MemberSite): UsageEntry {
@@ -45,6 +50,23 @@ function groupByAccess(search: MemberSearch): UsageGroup[] {
     // place where a rename can leave the project broken.
     group('receiver type unknown', search.unresolved),
   ];
+}
+
+/** The member with the names a framework reaches it by, read from the return type it declares. */
+function withAliases(target: MemberTarget): MemberTarget {
+  const declared = target.file.parsed.methods.find(
+    (method) => method.className === target.className && method.name === target.name,
+  );
+
+  return {
+    ...target,
+    aliases: memberAliases({
+      kind: target.kind,
+      name: target.name,
+      className: target.className,
+      returnType: target.kind === 'method' ? (declared?.returnType ?? null) : null,
+    }),
+  };
 }
 
 /** What to call the thing being searched, in the progress message and the picker. */
@@ -77,7 +99,7 @@ export async function showMemberUsages(): Promise<void> {
   const name = labelOf(target);
   const search = await vscode.window.withProgress(
     { location: vscode.ProgressLocation.Window, title: `Searching usages of ${name}…` },
-    () => findMemberSites(target),
+    () => findMemberSites(withAliases(target)),
   );
 
   if (search.sites.length + search.arguments.length + search.unresolved.length === 0) {

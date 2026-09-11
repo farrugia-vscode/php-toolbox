@@ -25,6 +25,30 @@ export interface UsageProvider {
   find(symbol: UsageSymbol, token: vscode.CancellationToken): Promise<UsageEntry[]>;
 }
 
+/** A member of a class, as another extension needs to know it to say how else the code reaches it. */
+export interface MemberSymbol {
+  kind: 'method' | 'property' | 'staticProperty' | 'constant';
+  name: string;
+  className: string;
+  /** The return type as the method writes it, null when it writes none or is not a method. */
+  returnType: string | null;
+}
+
+/** Another name the code reaches a member by, and how: a method a framework serves as a property. */
+export interface MemberAlias {
+  kind: 'method' | 'property';
+  name: string;
+}
+
+/**
+ * What a framework adds to a member: an Eloquent accessor `formattedValue(): Attribute` is
+ * never called, it is read and written as `->formatted_value`. Its mentions under that
+ * name join the count above the method and its listing.
+ */
+export interface MemberAliasProvider {
+  aliasesOf(member: MemberSymbol): MemberAlias[];
+}
+
 /**
  * What `activate()` hands to the extensions that ask for it.
  *
@@ -33,23 +57,41 @@ export interface UsageProvider {
  */
 export interface PhpToolboxApi {
   registerUsageProvider(provider: UsageProvider): vscode.Disposable;
+  registerMemberAliasProvider(provider: MemberAliasProvider): vscode.Disposable;
   /** Lists a search the caller ran itself in the same panel as every other listing. */
   showUsages(listing: UsageListing): Promise<void>;
 }
 
-const providers = new Set<UsageProvider>();
+const usageSources = new Set<UsageProvider>();
+const aliasSources = new Set<MemberAliasProvider>();
+const changed = new vscode.EventEmitter<void>();
+
+/** Fires when an extension brings a source or takes one away: what a lens counted is no longer the whole answer. */
+export const onDidChangeProviders = changed.event;
 
 export function usageProviders(): UsageProvider[] {
-  return [...providers];
+  return [...usageSources];
+}
+
+/** Every other name the registered extensions reach the member by. */
+export function memberAliases(member: MemberSymbol): MemberAlias[] {
+  return [...aliasSources].flatMap((provider) => provider.aliasesOf(member));
+}
+
+function register<T>(sources: Set<T>, provider: T): vscode.Disposable {
+  sources.add(provider);
+  changed.fire();
+
+  return new vscode.Disposable(() => {
+    sources.delete(provider);
+    changed.fire();
+  });
 }
 
 export function createApi(): PhpToolboxApi {
   return {
-    registerUsageProvider(provider: UsageProvider): vscode.Disposable {
-      providers.add(provider);
-
-      return new vscode.Disposable(() => providers.delete(provider));
-    },
+    registerUsageProvider: (provider: UsageProvider) => register(usageSources, provider),
+    registerMemberAliasProvider: (provider: MemberAliasProvider) => register(aliasSources, provider),
     showUsages: showUsagesView,
   };
 }

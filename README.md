@@ -167,6 +167,13 @@ toolbox?.registerUsageProvider({
   find: async (symbol, token) => [{ uri, range, label: 'OrderPlacedListener' }],
 });
 
+// A method the framework serves under another name: its mentions under that name join
+// the count above the method, read and written rather than called.
+toolbox?.registerMemberAliasProvider({
+  aliasesOf: (member) =>
+    member.returnType === 'Attribute' ? [{ kind: 'property', name: snakeCase(member.name) }] : [],
+});
+
 // A search the caller ran itself, listed in the same panel.
 await toolbox?.showUsages({ subject: 'orders.index', unit: 'usages', groups: [{ label: 'Usages', entries }] });
 ```

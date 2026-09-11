@@ -1,3 +1,4 @@
+import type { MemberAlias } from '../api';
 import { findAssignments, lastAssignment, type AssignmentSite } from '../php/assignments';
 import type { AccessMode, CallArgument, MemberAccess, MethodCall, MethodDeclaration } from '../php/members';
 import { resolve } from '../php/names';
@@ -29,6 +30,24 @@ export interface MemberRef {
   kind: 'method' | 'property' | 'staticProperty' | 'constant';
   name: string;
   className: string;
+  /** The other names a framework reaches it by, looked for next to its own. */
+  aliases?: MemberAlias[];
+}
+
+/**
+ * The names a member is mentioned by, each with the kind of mention to look for.
+ *
+ * Two extensions may well hand over the same alias; a mention counted twice would say
+ * the member is used more than it is.
+ */
+function mentionNames(member: MemberRef): Array<{ name: string; kind: MemberRef['kind'] }> {
+  const names = new Map<string, { name: string; kind: MemberRef['kind'] }>();
+
+  for (const mention of [{ name: member.name, kind: member.kind }, ...(member.aliases ?? [])]) {
+    names.set(`${mention.kind}:${mention.name}`, mention);
+  }
+
+  return [...names.values()];
 }
 
 /** One mention of a member, wherever it is written. */
@@ -446,12 +465,14 @@ export async function findMemberSites(member: MemberRef): Promise<MemberSearch> 
   const unresolved: MemberSite[] = [];
 
   for (const file of project.files) {
-    const mentions: Array<
-      Pick<MemberAccess, 'receiverKind' | 'receiverText' | 'nameStart' | 'nameEnd'> & { access?: AccessMode }
-    > =
-      member.kind === 'method'
-        ? file.parsed.calls.filter((call) => call.name === member.name)
-        : file.parsed.accesses.filter((access) => access.name === member.name && access.kind === member.kind);
+    const mentions = mentionNames(member).flatMap(
+      ({ name, kind }): Array<
+        Pick<MemberAccess, 'receiverKind' | 'receiverText' | 'nameStart' | 'nameEnd'> & { access?: AccessMode }
+      > =>
+        kind === 'method'
+          ? file.parsed.calls.filter((call) => call.name === name)
+          : file.parsed.accesses.filter((access) => access.name === name && access.kind === kind),
+    );
 
     for (const mention of mentions) {
       const resolution = mentionResolution(project, file, mention);
@@ -477,6 +498,11 @@ export interface AccessCount {
 /** Key a count is stored under: a name alone would collide between two classes. */
 export function accessKey(member: Pick<MemberRef, 'className' | 'name'>): string {
   return `${member.className}::${member.name}`;
+}
+
+/** Key a count is kept under: the same member asked with other aliases is another question. */
+function countKey(member: MemberRef): string {
+  return `${accessKey(member)}${(member.aliases ?? []).map((alias) => ` ${alias.kind}:${alias.name}`).join('')}`;
 }
 
 /**
@@ -506,7 +532,7 @@ function cachedCounts(members: MemberRef[]): Map<string, AccessCount> | null {
   const known = new Map<string, AccessCount>();
 
   for (const member of members) {
-    const count = counted.get(accessKey(member));
+    const count = counted.get(countKey(member));
 
     if (count === undefined) {
       return null;
@@ -528,7 +554,7 @@ export async function countMemberUsages(members: MemberRef[]): Promise<Map<strin
   const project = await projectOf();
   const counts = new Map<string, AccessCount>();
   const families = new Map<string, Set<string>>();
-  const byName = new Map<string, MemberRef[]>();
+  const byName = new Map<string, Array<{ member: MemberRef; kind: MemberRef['kind'] }>>();
 
   for (const member of members) {
     const key = accessKey(member);
@@ -539,13 +565,16 @@ export async function countMemberUsages(members: MemberRef[]): Promise<Map<strin
       read: 0,
       written: member.kind === 'method' ? 0 : promotedWrites(project, family, member).length,
     });
-    byName.set(member.name, [...(byName.get(member.name) ?? []), member]);
+
+    for (const { name, kind } of mentionNames(member)) {
+      byName.set(name, [...(byName.get(name) ?? []), { member, kind }]);
+    }
   }
 
   for (const file of project.files) {
     for (const call of file.parsed.calls) {
-      for (const member of byName.get(call.name) ?? []) {
-        if (member.kind !== 'method') {
+      for (const { member, kind } of byName.get(call.name) ?? []) {
+        if (kind !== 'method') {
           continue;
         }
 
@@ -559,10 +588,8 @@ export async function countMemberUsages(members: MemberRef[]): Promise<Map<strin
     }
 
     for (const access of file.parsed.accesses) {
-      const candidates = byName.get(access.name) ?? [];
-
-      for (const member of candidates) {
-        if (access.kind !== member.kind) {
+      for (const { member, kind } of byName.get(access.name) ?? []) {
+        if (access.kind !== kind) {
           continue;
         }
 
@@ -586,7 +613,9 @@ export async function countMemberUsages(members: MemberRef[]): Promise<Map<strin
     }
   }
 
-  counts.forEach((count, key) => counted.set(key, count));
+  for (const member of members) {
+    counted.set(countKey(member), counts.get(accessKey(member))!);
+  }
 
   return counts;
 }

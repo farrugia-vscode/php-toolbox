@@ -66,6 +66,14 @@ export class EventEmitter<T> {
   fire(_value: T): void {}
 }
 
+export class Disposable {
+  constructor(private readonly onDispose: () => void) {}
+
+  dispose(): void {
+    this.onDispose();
+  }
+}
+
 export const workspace = {
   textDocuments: [] as Array<{ isDirty: boolean; uri: Uri; getText(): string }>,
   onDidChangeTextDocument: (): { dispose(): void } => ({ dispose: () => {} }),

@@ -4,6 +4,7 @@ import { indexedFile, type IndexedFile } from './php/phpIndex';
 import type { Declaration } from './php/parser';
 import { accessKey, countMemberUsages, type MemberRef } from './refactor/callSites';
 import { descendantSearch, findUsages, referenceCategories, type Usage } from './usages';
+import { memberAliases, onDidChangeProviders } from './api';
 import { plural } from './usagesView';
 
 function countIn(usages: Usage[], categories: string[]): number {
@@ -63,9 +64,14 @@ function lensEnabled(key: string): boolean {
   return vscode.workspace.getConfiguration('phpToolbox').get(`${key}.enabled`, true);
 }
 
+/** True for a method the code reaches as a property, which is read and written rather than called. */
+function isServedAsProperty(member: MemberRef): boolean {
+  return (member.aliases ?? []).some((alias) => alias.kind === 'property');
+}
+
 /** How a count reads for the kind of member it counts. */
 function countLabel(member: MemberRef, count: { read: number; written: number }): string {
-  if (member.kind === 'method') {
+  if (member.kind === 'method' && !isServedAsProperty(member)) {
     return plural(count.read, 'calls');
   }
 
@@ -108,6 +114,12 @@ function countableMembers(file: IndexedFile): Array<MemberRef & { nameStart: num
           name: method.name,
           className: method.className,
           nameStart: method.nameStart,
+          aliases: memberAliases({
+            kind: 'method',
+            name: method.name,
+            className: method.className,
+            returnType: method.returnType,
+          }),
         })),
     );
   }
@@ -161,6 +173,8 @@ async function memberLenses(file: IndexedFile, uri: vscode.Uri): Promise<vscode.
 }
 
 const changed = new vscode.EventEmitter<void>();
+
+onDidChangeProviders(() => changed.fire());
 
 let hiddenState: vscode.Memento | null = null;
 let isHidden = false;
