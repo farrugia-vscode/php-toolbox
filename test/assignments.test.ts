@@ -32,14 +32,16 @@ describe('findAssignment', () => {
       kind: 'member',
       receiver: { kind: 'variable', name: 'site' },
       name: 'customer',
+      isCall: false,
     });
   });
 
-  test('reads a method call the same way as a property', () => {
+  test('reads a method call as the same member, called', () => {
     expect(assigned('invoice')).toEqual({
       kind: 'member',
       receiver: { kind: 'variable', name: 'customer' },
       name: 'latestInvoice',
+      isCall: true,
     });
   });
 
@@ -47,8 +49,14 @@ describe('findAssignment', () => {
     expect(assigned('mailer')).toEqual({ kind: 'instantiation', className: 'Mailer' });
   });
 
+  test('keeps a longer chain as written, for whoever can follow it', () => {
+    expect(assigned('site')).toEqual({
+      kind: 'expression',
+      text: "Site::query()->firstWhere('customer_id', $this->customerId)",
+    });
+  });
+
   test('says nothing about what it cannot type', () => {
-    expect(assigned('site')).toBeNull();
     expect(assigned('total')).toBeNull();
     expect(assigned('unknown')).toBeNull();
   });
@@ -71,6 +79,7 @@ describe('findAssignment', () => {
       kind: 'member',
       receiver: { kind: 'variable', name: 'invoice' },
       name: 'payer',
+      isCall: false,
     });
   });
 
@@ -119,6 +128,7 @@ describe('findAssignment', () => {
       kind: 'member',
       receiver: { kind: 'this' },
       name: 'site',
+      isCall: false,
     });
   });
 });

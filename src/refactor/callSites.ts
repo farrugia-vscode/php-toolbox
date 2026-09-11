@@ -5,9 +5,11 @@ import { resolve } from '../php/names';
 import type { Declaration } from '../php/parser';
 import { getPhpIndex, type IndexedFile } from '../php/phpIndex';
 import {
-  classNamesOf,
+  classTypesOf,
   followChain,
   FOREIGN,
+  foreignResolution,
+  isSelfArgument,
   isSelfType,
   splitChain,
   typeResolution,
@@ -162,32 +164,57 @@ function resolveName(file: IndexedFile, written: string): string | null {
   return resolve(written, written.startsWith('\\') ? 'fqn' : 'uqn', file.parsed.namespace, aliasesOf(file));
 }
 
-/** A type the project declares, or a foreign one: there is no third answer for a named class. */
-function knownResolution(project: Project, fqn: string | null): Resolution {
-  return fqn && project.declarations.has(fqn) ? typeResolution(fqn) : FOREIGN;
+/** A type the project declares, or a foreign one that keeps its name: there is no third answer for a named class. */
+function knownResolution(project: Project, fqn: string | null, typeArguments: string[] = []): Resolution {
+  if (!fqn) {
+    return FOREIGN;
+  }
+
+  return project.declarations.has(fqn) ? typeResolution(fqn, typeArguments) : foreignResolution(fqn, typeArguments);
 }
 
 function nameResolution(project: Project, file: IndexedFile, written: string): Resolution {
   return knownResolution(project, resolveName(file, written));
 }
 
-/** The class a declared type names: a union answers with the first of ours it lists. */
-function writtenResolution(project: Project, file: IndexedFile, written: string): Resolution {
-  const names = classNamesOf(written);
-
-  if (names.length === 0) {
-    return FOREIGN;
+/**
+ * A type argument as written, `Customer` or `static`, turned into the class it names in
+ * this file; `static` and `$this` are the class the type was read on. What names no class
+ * stays as written.
+ */
+function resolvedArgument(file: IndexedFile, written: string, self: string | null): string {
+  if (isSelfArgument(written)) {
+    return self ?? written;
   }
 
-  for (const name of names) {
-    const found = knownResolution(project, resolveName(file, name));
+  return classTypesOf(written).length === 1 ? (resolveName(file, classTypesOf(written)[0].name) ?? written) : written;
+}
+
+/**
+ * The class a declared type names: a union answers with the first of ours it lists, and
+ * failing that with the first foreign class it names, arguments kept either way.
+ */
+function writtenResolution(project: Project, file: IndexedFile, written: string, self: string | null = null): Resolution {
+  const types = classTypesOf(written);
+  let foreign: Resolution = FOREIGN;
+
+  for (const type of types) {
+    const found = knownResolution(
+      project,
+      resolveName(file, type.name),
+      type.arguments.map((argument) => resolvedArgument(file, argument, self)),
+    );
 
     if (found.kind === 'type') {
       return found;
     }
+
+    if (found.kind === 'foreign' && found.fqn !== undefined && foreign.kind === 'foreign' && foreign.fqn === undefined) {
+      foreign = found;
+    }
   }
 
-  return FOREIGN;
+  return foreign;
 }
 
 /** The innermost type declared around an offset: what `$this` points at there. */
@@ -255,7 +282,18 @@ function hierarchyAnswer(
  * A hierarchy that leaves the project answers `foreign`: the member is declared by a
  * dependency, so it is not ours whatever its name says.
  */
-function memberType(project: Project, fqn: string, link: ChainLink): Resolution {
+function memberType(project: Project, owner: Resolution, link: ChainLink): Resolution {
+  if (owner.kind === 'unknown' || owner.fqn === undefined) {
+    return owner;
+  }
+
+  const fqn = owner.fqn;
+  const ownerArguments = owner.arguments ?? [];
+
+  if (owner.kind === 'foreign') {
+    return providedResolution(project, fqn, [], ownerArguments, link) ?? FOREIGN;
+  }
+
   const asked = hierarchyAnswer(project, fqn, (file, declaration) =>
     firstTypeText(memberTypeText(file, declaration.fqn, link, true), annotatedTypeText(declaration, link)),
   );
@@ -266,19 +304,93 @@ function memberType(project: Project, fqn: string, link: ChainLink): Resolution 
       return UNKNOWN;
     }
 
-    // The written name means what the file declaring the member says it means.
-    return isSelfType(found.written) ? typeResolution(fqn) : writtenResolution(project, found.file, found.written);
+    // The written name means what the file declaring the member says it means; a fluent
+    // `static` keeps what the receiver was generic over.
+    return isSelfType(found.written) ? typeResolution(fqn, ownerArguments) : writtenResolution(project, found.file, found.written, fqn);
   }
 
   // Nothing of ours declares the member: a framework may still know what it answers with,
   // which is asked before the hierarchy is given up on as foreign.
-  const provided = providedMemberType({ owner: fqn, lineage: ancestorsOf(project, fqn), name: link.name, isCall: link.isCall });
+  const arguments_ = ownerArguments.length > 0 ? ownerArguments : extendsArgumentsOf(project, fqn);
 
-  if (provided !== null) {
-    return knownResolution(project, provided.replace(/^\\/, ''));
+  return providedResolution(project, fqn, ancestorsOf(project, fqn), arguments_, link) ?? (found.leavesProject ? FOREIGN : UNKNOWN);
+}
+
+/** An answer written as a static call, `App\\Models\\Order::query()`: the type that call answers with. */
+const ANSWER_AS_CALL = /^(\\?[\w\\]+)::(\w+)\(\)$/;
+
+/**
+ * What the registered extensions say the member answers with, as a resolution, or null
+ * when they say nothing. An answer names a class, generic arguments included, or a static
+ * call whose type is looked up in turn: a relation forwards to the query of its model.
+ */
+function providedResolution(project: Project, fqn: string, lineage: string[], typeArguments: string[], link: ChainLink): Resolution | null {
+  return providedAnswer(project, fqn, lineage, typeArguments, link)?.resolution ?? null;
+}
+
+/**
+ * The same, saying whether the answer forwards the call: `Invoice::query()` means the
+ * member is looked up on what that call answers with, not on the owner asked about.
+ */
+function providedAnswer(
+  project: Project,
+  fqn: string,
+  lineage: string[],
+  typeArguments: string[],
+  link: ChainLink,
+): { resolution: Resolution; isForwarded: boolean } | null {
+  const provided = providedMemberType({ owner: fqn, lineage, arguments: typeArguments, name: link.name, isCall: link.isCall });
+
+  if (provided === null) {
+    return null;
   }
 
-  return found.leavesProject ? FOREIGN : UNKNOWN;
+  const asCall = ANSWER_AS_CALL.exec(provided);
+
+  if (asCall) {
+    const target = memberType(project, knownResolution(project, asCall[1].replace(/^\\/, '')), { name: asCall[2], isCall: true });
+
+    return { resolution: target, isForwarded: true };
+  }
+
+  const [type] = classTypesOf(provided);
+
+  return type
+    ? { resolution: knownResolution(project, type.name.replace(/^\\/, ''), type.arguments.map((argument) => argument.replace(/^\\/, ''))), isForwarded: false }
+    : null;
+}
+
+/**
+ * The type a mention is looked up on: its receiver, or what an extension forwards the call
+ * to when the receiver is a foreign class that hands its calls on. A scope called on a
+ * relation reaches the builder of the related model.
+ */
+export function lookupResolution(
+  project: Project,
+  file: IndexedFile,
+  mention: Pick<MemberAccess, 'receiverKind' | 'receiverText' | 'nameStart'> & { name: string; isCall?: boolean },
+): Resolution {
+  const receiver = mentionResolution(project, file, mention);
+
+  if (receiver.kind !== 'foreign' || receiver.fqn === undefined) {
+    return receiver;
+  }
+
+  const answer = providedAnswer(project, receiver.fqn, [], receiver.arguments ?? [], { name: mention.name, isCall: mention.isCall ?? true });
+
+  return answer?.isForwarded ? answer.resolution : receiver;
+}
+
+/** What a class of the project is generic over, read from the `@extends` of its docblock and resolved in its file. */
+function extendsArgumentsOf(project: Project, fqn: string): string[] {
+  const owner = project.owners.get(fqn);
+  const declaration = project.declarations.get(fqn);
+
+  if (!owner || !declaration) {
+    return [];
+  }
+
+  return declaration.annotated.extendsArguments.map((argument) => resolvedArgument(owner, argument, fqn));
 }
 
 /** The first type written among the answers; `null` when one is declared without a type, `undefined` when none says anything. */
@@ -312,7 +424,8 @@ function memberTypeText(file: IndexedFile, className: string, link: ChainLink, i
     return undefined;
   }
 
-  return 'returnType' in found ? found.returnType : found.type;
+  // The docblock is where generics are written: `HasMany<Invoice>` says more than `HasMany`.
+  return 'returnType' in found ? (found.docReturnType ?? found.returnType) : (found.docType ?? found.type);
 }
 
 /** How deep a variable is followed through the variables it was assigned from. */
@@ -375,9 +488,7 @@ function variableResolution(
   if (assigned.kind === 'staticMember') {
     const owner = nameResolution(project, file, assigned.className);
 
-    return owner.kind === 'type'
-      ? memberType(project, owner.fqn, { name: assigned.name, isCall: assigned.isCall })
-      : owner;
+    return memberType(project, owner, { name: assigned.name, isCall: assigned.isCall });
   }
 
   // What the variable was read from is resolved where it was assigned: a receiver
@@ -387,7 +498,7 @@ function variableResolution(
       ? knownResolution(project, enclosingOf(file, site.start)?.fqn ?? null)
       : variableResolution(project, file, assigned.receiver.name, site.start, depth + 1);
 
-  return receiver.kind === 'type' ? memberType(project, receiver.fqn, { name: assigned.name, isCall: assigned.isCall }) : receiver;
+  return memberType(project, receiver, { name: assigned.name, isCall: assigned.isCall });
 }
 
 /** `registerDomain()` as the start of a chain: a plain function, typed by what it declares it returns. */
@@ -398,7 +509,7 @@ function chainResolution(project: Project, file: IndexedFile, text: string, offs
   const chain = splitChain(text);
   const root = rootResolution(project, file, chain.root, offset, depth);
 
-  return followChain(root, chain.links, { memberType: (fqn, link) => memberType(project, fqn, link) });
+  return followChain(root, chain.links, { memberType: (owner, link) => memberType(project, owner, link) });
 }
 
 /** The expression a chain starts from: `$this`, a type name, a `new`, a call, or a variable. */
@@ -477,7 +588,7 @@ export function mentionResolution(
   const chain = splitChain(mention.receiverText);
   const root = rootResolution(project, file, chain.root, offset);
 
-  return followChain(root, chain.links, { memberType: (fqn, link) => memberType(project, fqn, link) });
+  return followChain(root, chain.links, { memberType: (owner, link) => memberType(project, owner, link) });
 }
 
 /**
@@ -590,15 +701,15 @@ export async function findMemberSites(member: MemberRef): Promise<MemberSearch> 
   for (const file of project.files) {
     const mentions = mentionNames(member).flatMap(
       ({ name, kind }): Array<
-        Pick<MemberAccess, 'receiverKind' | 'receiverText' | 'nameStart' | 'nameEnd'> & { access?: AccessMode }
+        Pick<MemberAccess, 'receiverKind' | 'receiverText' | 'name' | 'nameStart' | 'nameEnd'> & { access?: AccessMode; isCall: boolean }
       > =>
         kind === 'method'
-          ? file.parsed.calls.filter((call) => call.name === name)
-          : file.parsed.accesses.filter((access) => access.name === name && access.kind === kind),
+          ? file.parsed.calls.filter((call) => call.name === name).map((call) => ({ ...call, isCall: true }))
+          : file.parsed.accesses.filter((access) => access.name === name && access.kind === kind).map((access) => ({ ...access, isCall: false })),
     );
 
     for (const mention of mentions) {
-      const resolution = mentionResolution(project, file, mention);
+      const resolution = lookupResolution(project, file, mention);
       const site = { file, nameStart: mention.nameStart, nameEnd: mention.nameEnd, access: mention.access };
 
       if (resolution.kind === 'type' && family.has(resolution.fqn)) {
@@ -707,7 +818,7 @@ export async function countMemberUsages(members: MemberRef[]): Promise<Map<strin
           continue;
         }
 
-        const resolution = mentionResolution(project, file, call);
+        const resolution = lookupResolution(project, file, { ...call, isCall: true });
         const key = accessKey(member);
 
         if (resolution.kind === 'type' && families.get(key)?.has(resolution.fqn)) {
@@ -722,7 +833,7 @@ export async function countMemberUsages(members: MemberRef[]): Promise<Map<strin
           continue;
         }
 
-        const resolution = mentionResolution(project, file, access);
+        const resolution = lookupResolution(project, file, { ...access, isCall: false });
         const key = accessKey(member);
 
         if (resolution.kind !== 'type' || !families.get(key)?.has(resolution.fqn)) {

@@ -1,3 +1,4 @@
+import { docblockBefore, readType } from './docblock';
 import { parseAst } from './engine';
 import { collectImports, resolve, trimLeadingSeparator, type Import } from './names';
 import {
@@ -56,42 +57,43 @@ export interface Annotations {
   methods: AnnotatedMember[];
   /** Fully qualified `@mixin` targets. */
   mixins: string[];
+  /** What `@extends Builder<Customer>` (or `@implements`) is generic over, as written. */
+  extendsArguments: string[];
 }
 
-const PROPERTY_TAG = /@property(?:-read|-write)?\s+(\S+)\s+\$(\w+)/g;
-const METHOD_TAG = /@method\s+(?:static\s+)?(?:(\S+)\s+)?(\w+)\s*\(/g;
+const PROPERTY_TAG = /@property(?:-read|-write)?\s+/g;
+const METHOD_TAG = /@method\s+(?:static\s+)?/g;
 const MIXIN_TAG = /@mixin\s+(\\?[\w\\]+)/g;
-
-/**
- * The docblock a declaration sits under: the last `/** ... *\/` before it, with nothing
- * but attributes and blank lines in between.
- */
-export function docblockBefore(text: string, offset: number): string | null {
-  const before = text.slice(0, offset);
-  const start = before.lastIndexOf('/**');
-  const end = start === -1 ? -1 : before.indexOf('*/', start);
-
-  if (end === -1 || !/^(?:\s|#\[[^\n]*\]|final|abstract|readonly)*$/.test(before.slice(end + 2))) {
-    return null;
-  }
-
-  return before.slice(start, end + 2);
-}
+const EXTENDS_TAG = /@(?:template-)?(?:extends|implements)\s+\\?[\w\\]+<([^>]*)>/;
 
 /** What the tags of a docblock declare, the `@mixin` names resolved as the file would resolve them. */
 function annotationsOf(docblock: string | null, resolveWritten: (written: string) => string | null): Annotations {
-  const annotations: Annotations = { properties: [], methods: [], mixins: [] };
+  const annotations: Annotations = { properties: [], methods: [], mixins: [], extendsArguments: [] };
 
   if (docblock === null) {
     return annotations;
   }
 
   for (const match of docblock.matchAll(PROPERTY_TAG)) {
-    annotations.properties.push({ name: match[2], type: match[1] });
+    const { type, end } = readType(docblock, match.index + match[0].length);
+    const name = /^\s+\$(\w+)/.exec(docblock.slice(end));
+
+    if (name) {
+      annotations.properties.push({ name: name[1], type });
+    }
   }
 
   for (const match of docblock.matchAll(METHOD_TAG)) {
-    annotations.methods.push({ name: match[2], type: match[1] ?? null });
+    const { type, end } = readType(docblock, match.index + match[0].length);
+    // `@method static Order first()` writes a type before the name; `@method first()` writes none.
+    const named = /^\s+(\w+)\s*\(/.exec(docblock.slice(end));
+    const bare = /^(\w+)\s*\(/.exec(type);
+
+    if (named) {
+      annotations.methods.push({ name: named[1], type });
+    } else if (bare) {
+      annotations.methods.push({ name: bare[1], type: null });
+    }
   }
 
   for (const match of docblock.matchAll(MIXIN_TAG)) {
@@ -102,8 +104,15 @@ function annotationsOf(docblock: string | null, resolveWritten: (written: string
     }
   }
 
+  const extended = EXTENDS_TAG.exec(docblock);
+
+  if (extended) {
+    annotations.extendsArguments = extended[1].split(',').map((argument) => argument.trim()).filter((argument) => argument !== '');
+  }
+
   return annotations;
 }
+
 
 /** How a name was written: fully qualified, qualified, relative or bare. */
 export type Resolution = 'fqn' | 'qn' | 'rn' | 'uqn';
@@ -301,6 +310,7 @@ export function parseFile(text: string): ParsedFile {
           isStatic: false,
           hasAttributes: (argument.attrGroups ?? []).length > 0,
           type: param.type,
+          docType: null,
           nameStart: written + 1,
           nameEnd: written + 1 + param.name.length,
           start: param.start,

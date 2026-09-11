@@ -1,3 +1,4 @@
+import { taggedTypeBefore } from './docblock';
 /**
  * The members and calls a PHP file contains, built from the parser AST.
  *
@@ -33,6 +34,8 @@ export interface MethodDeclaration {
   hasAttributes: boolean;
   params: ParamInfo[];
   returnType: string | null;
+  /** The `@return` of the docblock, which is where generics are written: `HasMany<Invoice, $this>`. */
+  docReturnType: string | null;
   nameStart: number;
   nameEnd: number;
   /** Offsets of the whole declaration, from the first modifier to the closing brace. */
@@ -53,6 +56,8 @@ export interface PropertyDeclaration {
   isStatic: boolean;
   hasAttributes: boolean;
   type: string | null;
+  /** The `@var` of the docblock, generics included: `Collection<int, Invoice>`. */
+  docType: string | null;
   nameStart: number;
   nameEnd: number;
   start: number;
@@ -213,6 +218,7 @@ export function methodFrom(node: any, text: string, className: string): MethodDe
     hasAttributes: hasAttributes(node),
     params: (node.arguments ?? []).map((argument: any) => paramFrom(argument, text)),
     returnType: typeText(node.type, text, node.nullable === true),
+    docReturnType: taggedTypeBefore(text, node.loc.start.offset, 'return'),
     nameStart,
     nameEnd,
     start: node.loc.start.offset,
@@ -396,6 +402,7 @@ export function propertyFrom(node: any, text: string, className: string, group: 
     isStatic: group.isStatic === true,
     hasAttributes: hasAttributes(group) || hasAttributes(node),
     type: typeText(node.type, text, node.nullable === true),
+    docType: taggedTypeBefore(text, group.loc.start.offset, 'var'),
     // The `$` is part of the written name, but not of the name a rename replaces.
     nameStart: text[nameStart] === '$' ? nameStart + 1 : nameStart,
     nameEnd,

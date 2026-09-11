@@ -6,15 +6,62 @@
  * refactoring of ours can concern it — and `unknown` says nothing said what it holds.
  */
 export type Resolution =
-  | { kind: 'type'; fqn: string }
-  | { kind: 'foreign' }
+  | { kind: 'type'; fqn: string; arguments: string[] }
+  /** A foreign class keeps its name and type arguments when they were written: `HasMany<Invoice>` still says what it holds. */
+  | { kind: 'foreign'; fqn?: string; arguments?: string[] }
   | { kind: 'unknown' };
 
 export const FOREIGN: Resolution = { kind: 'foreign' };
 export const UNKNOWN: Resolution = { kind: 'unknown' };
 
-export function typeResolution(fqn: string): Resolution {
-  return { kind: 'type', fqn };
+export function typeResolution(fqn: string, typeArguments: string[] = []): Resolution {
+  return { kind: 'type', fqn, arguments: typeArguments };
+}
+
+export function foreignResolution(fqn: string, typeArguments: string[] = []): Resolution {
+  return { kind: 'foreign', fqn, arguments: typeArguments };
+}
+
+/** One member of a written type: `Builder<Customer>` is the name and what it is generic over. */
+export interface WrittenType {
+  name: string;
+  arguments: string[];
+}
+
+/** Splits at the separator, leaving alone what sits between `<` and `>`. */
+function splitTopLevel(text: string, separators: string): string[] {
+  const parts: string[] = [];
+  let depth = 0;
+  let start = 0;
+
+  for (let index = 0; index < text.length; index++) {
+    const char = text[index];
+
+    if (char === '<') {
+      depth++;
+    } else if (char === '>') {
+      depth--;
+    } else if (depth === 0 && separators.includes(char)) {
+      parts.push(text.slice(start, index));
+      start = index + 1;
+    }
+  }
+
+  parts.push(text.slice(start));
+
+  return parts.map((part) => part.trim()).filter((part) => part !== '');
+}
+
+/** The members of a union or intersection type, each with its type arguments read apart. */
+export function writtenTypesOf(written: string): WrittenType[] {
+  return splitTopLevel(written, '|&').map((part) => {
+    const bare = part.replace(/^\?/, '');
+    const generic = /^([^<]+)<(.*)>$/.exec(bare);
+
+    return generic
+      ? { name: generic[1].trim(), arguments: splitTopLevel(generic[2], ',') }
+      : { name: bare, arguments: [] };
+  });
 }
 
 /** Type names that name no class, so nothing of ours can hide behind them. */
@@ -146,43 +193,49 @@ function closingQuote(text: string, openOffset: number): number | null {
  * with every class it lists: any of them can be the one a call reaches.
  */
 export function classNamesOf(written: string): string[] {
-  return written
-    .split(/[|&]/)
-    .map((part) => part.trim().replace(/^\?/, ''))
-    .filter((part) => part !== '' && !NON_CLASS_TYPES.has(part.toLowerCase()));
+  return classTypesOf(written).map((type) => type.name);
+}
+
+/** The members of a written type that name a class, `Builder<Customer>|null` keeping only the builder. */
+export function classTypesOf(written: string): WrittenType[] {
+  return writtenTypesOf(written).filter((type) => !NON_CLASS_TYPES.has(type.name.toLowerCase()));
 }
 
 /** `Builder|null` still answers with the class the call was written on. */
 export function isSelfType(written: string): boolean {
-  return written
-    .split(/[|&]/)
-    .some((part) => SELF_TYPES.has(part.trim().replace(/^\?/, '').toLowerCase()));
+  return writtenTypesOf(written).some((type) => SELF_TYPES.has(type.name.toLowerCase()));
 }
 
-/** What the project knows about its own types. Anything it does not declare is foreign. */
+/** A type argument written as the class itself: `Builder<static>` is a builder of the class it is read on. */
+export function isSelfArgument(written: string): boolean {
+  return SELF_TYPES.has(written.replace(/^\?/, '').toLowerCase());
+}
+
+/** What the project knows about its own types, and what it is told about the others. */
 export interface TypeSource {
   /**
-   * The type a member of `fqn` answers with, looked up through the hierarchy: the return
-   * type for a call, the declared type for a property.
+   * The type a member of the owner answers with: looked up through the hierarchy for a
+   * type of the project, asked of the registered extensions for a foreign one that kept
+   * its name.
    */
-  memberType(fqn: string, link: ChainLink): Resolution;
+  memberType(owner: Resolution, link: ChainLink): Resolution;
 }
 
 /**
  * Walks a chain from the type its root holds to the type its last link answers with.
  *
- * A single link that answers with something outside the project ends the walk: whatever
- * `->where(…)` returns, no member of ours is reached through it.
+ * A link that answers with nothing known ends the walk: whatever `->where(…)` returns on a
+ * class nobody named, no member of ours is reached through it.
  */
 export function followChain(root: Resolution, links: ChainLink[], source: TypeSource): Resolution {
   let current = root;
 
   for (const link of links) {
-    if (current.kind !== 'type') {
+    if (current.kind === 'unknown' || (current.kind === 'foreign' && current.fqn === undefined)) {
       return current;
     }
 
-    current = source.memberType(current.fqn, link);
+    current = source.memberType(current, link);
   }
 
   return current;

@@ -52,8 +52,13 @@ export interface MemberAliasProvider {
 /** A member asked about, with everything the owner inherits from, project or not. */
 export interface MemberQuestion {
   owner: string;
-  /** Fully qualified ancestors, interfaces and traits, the ones outside the project included. */
+  /** Fully qualified ancestors, interfaces and traits, the ones outside the project included; empty for a foreign owner. */
   lineage: string[];
+  /**
+   * What the owner is generic over, fully qualified when it names a class: `HasMany<Invoice>`
+   * read from a docblock, or the `@extends Builder<Customer>` of a class of the project.
+   */
+  arguments: string[];
   name: string;
   isCall: boolean;
 }
@@ -65,7 +70,12 @@ export interface MemberQuestion {
  * such a provider answers is looked up before the hierarchy is walked out of the project.
  */
 export interface MemberTypeProvider {
-  /** A class name as the owner's file would resolve it, or null when the provider has no say. */
+  /**
+   * A fully qualified class, generic arguments included (`App\\Models\\Customer`,
+   * `Illuminate\\Database\\Eloquent\\Relations\\HasMany<App\\Models\\Invoice>`), or a static
+   * call whose type is looked up in turn (`App\\Models\\Invoice::query()`); null when the
+   * provider has no say.
+   */
   typeOf(member: MemberQuestion): string | null;
 }
 

@@ -178,11 +178,14 @@ toolbox?.registerMemberAliasProvider({
 // call on a Customer, and `$customer = app(Customer::class)` types the variable.
 toolbox?.registerInstanceFactories(['app', 'resolve']);
 
-// The type of a call no class of the project declares: `Order::query()->first()` is an
-// Order because the framework says so. Asked before the hierarchy is given up on as foreign.
+// The type of a call no class of the project declares. `arguments` is what the owner is
+// generic over, read from the docblocks: `@return HasMany<Invoice, $this>` on a relation,
+// `@extends Builder<Customer>` on a builder of the project. An answer names a class
+// (generics included), or a static call to look up in turn: `Invoice::query()` forwards a
+// scope called on a relation to the builder of its model.
 toolbox?.registerMemberTypeProvider({
-  typeOf: ({ owner, lineage, name, isCall }) =>
-    isCall && lineage.includes('Illuminate\\Database\\Eloquent\\Model') && name === 'first' ? owner : null,
+  typeOf: ({ owner, lineage, arguments: generics, name, isCall }) =>
+    isCall && lineage.includes('Illuminate\\Database\\Eloquent\\Builder') && name === 'first' ? generics[0] ?? null : null,
 });
 
 // A search the caller ran itself, listed in the same panel.
