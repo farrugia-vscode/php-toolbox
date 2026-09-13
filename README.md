@@ -123,6 +123,13 @@ file, and nothing is linked unless the file is really there.
 Typing such a path completes it, directory by directory — outside `require` and `include`,
 where Intelephense already offers the same list.
 
+### Packages in composer.json
+
+Every package under `require` and `require-dev` carries two links. Its name opens the
+repository the installed package declares (its `support.source`, or its `homepage`), and
+the Packagist page when the package is not installed or says nothing. Its version
+constraint opens the copy installed under `vendor/`.
+
 ### Find usages
 
 Above a class, an interface, a trait or an enum, a lens counts what names it and what is

@@ -15,6 +15,7 @@ import { showMemberUsages } from './findMemberUsages';
 import { InheritanceResolver } from './inheritanceResolver';
 import { PathCompletionProvider } from './paths/pathCompletionProvider';
 import { PathLinkProvider } from './paths/pathLinkProvider';
+import { ComposerPackageLinkProvider } from './composer/packageLinkProvider';
 import { forgetPsr4Roots } from './php/psr4';
 import { CreateFromUsageCodeActionProvider } from './refactor/createFromUsage';
 import { extractExpression, extractMethod } from './refactor/extractCommands';
@@ -247,6 +248,10 @@ export function activate(context: vscode.ExtensionContext): PhpToolboxApi {
     vscode.languages.registerDocumentLinkProvider(
       { scheme: 'file', language: 'php' },
       new PathLinkProvider(),
+    ),
+    vscode.languages.registerDocumentLinkProvider(
+      { scheme: 'file', pattern: '**/composer.json' },
+      new ComposerPackageLinkProvider(),
     ),
     vscode.languages.registerCompletionItemProvider(
       { scheme: 'file', language: 'php' },
