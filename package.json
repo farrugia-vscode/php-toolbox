@@ -2,7 +2,7 @@
   "name": "php-toolbox",
   "displayName": "PHP Toolbox",
   "description": "Navigate and refactor PHP code the way PhpStorm does: extract and inline, change signature, move members, inherited symbols, usages grouped by intent, workspace-wide rename",
-  "version": "0.7.10",
+  "version": "0.7.11",
   "publisher": "farrugia",
   "icon": "icon.png",
   "engines": {
@@ -31,20 +31,10 @@
           "default": true,
           "markdownDescription": "Grey out the private members no line of the file uses. Read from the file alone, so a member only reached in a way nothing can follow — a name built at runtime, a trait calling into the class — may be greyed out while still being used."
         },
-        "phpToolbox.propertyAccessLens.enabled": {
+        "phpToolbox.usagesLens.enabled": {
           "type": "boolean",
-          "default": true,
-          "description": "Show how many times each property is read and written above its declaration. A promoted constructor parameter gets its own lens, which makes the signature taller."
-        },
-        "phpToolbox.methodUsageLens.enabled": {
-          "type": "boolean",
-          "default": true,
-          "description": "Show how many times each method is called above its declaration, private ones included."
-        },
-        "phpToolbox.constantUsageLens.enabled": {
-          "type": "boolean",
-          "default": true,
-          "description": "Show how many times each class constant is used above its declaration, private ones included."
+          "default": false,
+          "markdownDescription": "Show the usages above every declaration: references and subtypes of a type, calls of a method, reads and writes of a property. The Laravel extension follows it for its own declarations (route names, translation keys, config keys). **PHP: Toggle code lenses** flips it."
         },
         "phpToolbox.conventions.booleanPrefix.enabled": {
           "type": "boolean",

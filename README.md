@@ -89,7 +89,7 @@ licence key. These fill them in, for PHP files:
 | Go to declaration | on a method, lands on the interface or abstract method it answers |
 | Type hierarchy | supertypes and subtypes, read from the parsed project |
 | Inlay hints | parameter names on every call whose receiver can be typed, silent when the argument already carries the name |
-| Code lens | references and subtypes above each declaration, reads and writes above each property, **PHP: Toggle code lenses** to hide them all |
+| Code lens | references and subtypes above each declaration, reads and writes above each property, off until `phpToolbox.usagesLens.enabled` or **PHP: Toggle code lenses** turns them on |
 | Document links | see *Paths in strings* below |
 | `@mixin` | see just below |
 
@@ -146,12 +146,13 @@ that build the class count as its writes, `new Order(total: 10)` and
 written.
 
 Above each property declaration, a lens gives the same two numbers (`12 reads, 1 write`)
-and opens that listing. Set `phpToolbox.propertyAccessLens.enabled` to `false` to hide it -
-on a class with promoted parameters it puts one lens per parameter line.
+and opens that listing.
 
-**PHP: Toggle code lenses** turns every lens of the extension off and on, references
-included, and the choice survives a reload. The counts are worth a glance now and then and
-grey noise the rest of the time, so the answer is a keystroke rather than a setting.
+Every usages lens hangs on one switch, `phpToolbox.usagesLens.enabled`, off by default:
+the counts are worth a glance now and then and grey noise the rest of the time.
+**PHP: Toggle code lenses** flips it, and the Laravel extension reads the same switch for
+the counts above its own declarations (route names, translation keys, config keys), so a
+file shows every usages lens or none.
 
 ### For other extensions
 

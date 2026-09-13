@@ -59,11 +59,6 @@ async function methodLenses(
     );
 }
 
-/** A lens is worth a line only when the setting for that kind of member says so. */
-function lensEnabled(key: string): boolean {
-  return vscode.workspace.getConfiguration('phpToolbox').get(`${key}.enabled`, true);
-}
-
 /** True for a method the code reaches as a property, which is read and written rather than called. */
 function isServedAsProperty(member: MemberRef): boolean {
   return (member.aliases ?? []).some((alias) => alias.kind === 'property');
@@ -90,54 +85,38 @@ function countLabel(member: MemberRef, count: { read: number; written: number })
  * already carry a lens of their own on that very line.
  */
 function countableMembers(file: IndexedFile): Array<MemberRef & { nameStart: number }> {
-  const members: Array<MemberRef & { nameStart: number }> = [];
-
-  if (lensEnabled('propertyAccessLens')) {
-    members.push(
-      ...file.parsed.properties
-        .filter((property) => property.className.length > 0)
-        .map((property) => ({
-          kind: 'property' as const,
-          name: property.name,
-          className: property.className,
-          nameStart: property.nameStart,
-        })),
-    );
-  }
-
-  if (lensEnabled('methodUsageLens')) {
-    members.push(
-      ...file.parsed.methods
-        .filter((method) => method.className.length > 0 && method.name !== '__construct')
-        .map((method) => ({
-          kind: 'method' as const,
+  return [
+    ...file.parsed.properties
+      .filter((property) => property.className.length > 0)
+      .map((property) => ({
+        kind: 'property' as const,
+        name: property.name,
+        className: property.className,
+        nameStart: property.nameStart,
+      })),
+    ...file.parsed.methods
+      .filter((method) => method.className.length > 0 && method.name !== '__construct')
+      .map((method) => ({
+        kind: 'method' as const,
+        name: method.name,
+        className: method.className,
+        nameStart: method.nameStart,
+        aliases: memberAliases({
+          kind: 'method',
           name: method.name,
           className: method.className,
-          nameStart: method.nameStart,
-          aliases: memberAliases({
-            kind: 'method',
-            name: method.name,
-            className: method.className,
-            returnType: method.returnType,
-          }),
-        })),
-    );
-  }
-
-  if (lensEnabled('constantUsageLens')) {
-    members.push(
-      ...file.parsed.constants
-        .filter((constant) => constant.className.length > 0)
-        .map((constant) => ({
-          kind: 'constant' as const,
-          name: constant.name,
-          className: constant.className,
-          nameStart: constant.nameStart,
-        })),
-    );
-  }
-
-  return members;
+          returnType: method.returnType,
+        }),
+      })),
+    ...file.parsed.constants
+      .filter((constant) => constant.className.length > 0)
+      .map((constant) => ({
+        kind: 'constant' as const,
+        name: constant.name,
+        className: constant.className,
+        nameStart: constant.nameStart,
+      })),
+  ];
 }
 
 /**
@@ -176,28 +155,54 @@ const changed = new vscode.EventEmitter<void>();
 
 onDidChangeProviders(() => changed.fire());
 
-let hiddenState: vscode.Memento | null = null;
-let isHidden = false;
+/**
+ * The one switch of every usages lens, this extension's and those of the extensions that
+ * follow it. A setting rather than a state of its own, so that a single value answers for
+ * all of them and any extension can read it.
+ */
+export const USAGES_LENS_SETTING = 'phpToolbox.usagesLens.enabled';
 
-const HIDDEN_KEY = 'codeLens.isHidden';
+export function isUsagesLensEnabled(): boolean {
+  return vscode.workspace.getConfiguration().get(USAGES_LENS_SETTING, false);
+}
 
-/** Remembers across reloads whether the lenses were left off. */
-export function initCodeLens(memento: vscode.Memento): void {
-  hiddenState = memento;
-  isHidden = memento.get(HIDDEN_KEY, false);
+/** Redraws the lenses when the switch moves, from the command or from the settings. */
+export function watchUsagesLensSetting(): vscode.Disposable {
+  return vscode.workspace.onDidChangeConfiguration((event) => {
+    if (event.affectsConfiguration(USAGES_LENS_SETTING)) {
+      changed.fire();
+    }
+  });
 }
 
 /**
- * Turns every lens of this extension off and on.
+ * Turns every usages lens off and on.
  *
  * The counts answer a question that is only asked now and then; the rest of the time they
  * are a line of grey above every declaration, which is exactly what reading code does not need.
  */
-export function toggleCodeLens(): void {
-  isHidden = !isHidden;
-  hiddenState?.update(HIDDEN_KEY, isHidden);
-  changed.fire();
-  vscode.window.setStatusBarMessage(isHidden ? 'PHP lenses hidden' : 'PHP lenses shown', 2000);
+export async function toggleCodeLens(): Promise<void> {
+  const configuration = vscode.workspace.getConfiguration();
+  const enabled = !isUsagesLensEnabled();
+
+  await configuration.update(USAGES_LENS_SETTING, enabled, settingTarget(configuration));
+
+  vscode.window.setStatusBarMessage(enabled ? 'Usages lenses shown' : 'Usages lenses hidden', 2000);
+}
+
+/** Where the switch is written: the place that currently decides its value, or the user settings. */
+function settingTarget(configuration: vscode.WorkspaceConfiguration): vscode.ConfigurationTarget {
+  const inspected = configuration.inspect<boolean>(USAGES_LENS_SETTING);
+
+  if (inspected?.workspaceFolderValue !== undefined) {
+    return vscode.ConfigurationTarget.WorkspaceFolder;
+  }
+
+  if (inspected?.workspaceValue !== undefined) {
+    return vscode.ConfigurationTarget.Workspace;
+  }
+
+  return vscode.ConfigurationTarget.Global;
 }
 
 /**
@@ -212,7 +217,7 @@ export class PhpCodeLensProvider implements vscode.CodeLensProvider {
     document: vscode.TextDocument,
     token: vscode.CancellationToken,
   ): Promise<vscode.CodeLens[]> {
-    if (isHidden) {
+    if (!isUsagesLensEnabled()) {
       return [];
     }
 
