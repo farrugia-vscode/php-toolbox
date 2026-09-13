@@ -131,7 +131,9 @@ built on it; above an abstract method, what answers it.
 **PHP: Find usages**, also offered on a declaration line under `Ctrl+.` together with the
 two refactorings, lists what the workspace does with a type, grouped by intent: implemented by, extended by, used as a
 trait, instantiated, injected, accessed statically. The listing opens in the **PHP Usages**
-panel, one fold per heading and per file.
+panel, one fold per heading and per file: every line is coloured as code with the usage
+marked in it, a filter narrows it down, the arrow keys walk it and `Enter` opens a line
+(`Ctrl+Enter` to the side).
 
 On a method, a property or a constant, the same action answers with call sites instead -
 what actually calls that public method. Mentions whose receiver could not be typed are

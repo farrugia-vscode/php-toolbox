@@ -177,7 +177,7 @@ export function activate(context: vscode.ExtensionContext): PhpToolboxApi {
     vscode.languages.registerRenameProvider({ scheme: 'file', language: 'php' }, new PhpRenameProvider()),
     registerUnusedMembers(),
     registerConventions(),
-    registerUsagesView(),
+    registerUsagesView(context.extensionUri),
     registerFileMoveSync(),
     composer,
     vscode.languages.registerCodeActionsProvider(

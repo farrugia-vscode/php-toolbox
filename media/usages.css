@@ -1,0 +1,218 @@
+body {
+  margin: 0;
+  padding: 0;
+  color: var(--vscode-foreground);
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+}
+
+#usages {
+  display: flex;
+  flex-direction: column;
+}
+
+.heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 34px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--vscode-panel-border, var(--vscode-widget-border));
+  position: sticky;
+  top: 0;
+  background: var(--vscode-panel-background, var(--vscode-editor-background));
+  z-index: 1;
+}
+
+.heading .code {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: pre;
+}
+
+.pill {
+  flex: none;
+  padding: 1px 7px;
+  border-radius: 9px;
+  font-size: 11px;
+  background: var(--vscode-badge-background);
+  color: var(--vscode-badge-foreground);
+}
+
+.filter {
+  flex: none;
+  width: 220px;
+  height: 24px;
+  margin-left: auto;
+  padding: 0 6px;
+  box-sizing: border-box;
+  border: 1px solid var(--vscode-input-border, transparent);
+  border-radius: 2px;
+  background: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+  font-family: inherit;
+  font-size: inherit;
+}
+
+.filter::placeholder {
+  color: var(--vscode-input-placeholderForeground);
+}
+
+.filter:focus {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
+}
+
+.group,
+.file {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 12px;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.group {
+  margin-top: 6px;
+  font-weight: 600;
+}
+
+.file {
+  margin-top: 4px;
+  padding-left: 16px;
+}
+
+.group-section .file {
+  padding-left: 28px;
+}
+
+.group svg,
+.file svg {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  fill: var(--vscode-icon-foreground);
+  transform: rotate(90deg);
+  transition: transform 80ms;
+}
+
+.folded > .group svg,
+.folded > .file svg {
+  transform: none;
+}
+
+.folded > .files,
+.folded > .rows {
+  display: none;
+}
+
+.directory {
+  color: var(--vscode-descriptionForeground);
+}
+
+.file .name {
+  font-weight: 500;
+}
+
+.count {
+  color: var(--vscode-descriptionForeground);
+  margin-left: 4px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 24px;
+  padding: 0 12px 0 44px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.group-section .row {
+  padding-left: 56px;
+}
+
+.row:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
+.row:focus {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
+  background: var(--vscode-list-activeSelectionBackground);
+  color: var(--vscode-list-activeSelectionForeground, inherit);
+}
+
+.line-number {
+  flex: none;
+  width: 32px;
+  text-align: right;
+  color: var(--vscode-editorLineNumber-foreground);
+  font-family: var(--vscode-editor-font-family);
+  font-size: 12px;
+}
+
+.code {
+  font-family: var(--vscode-editor-font-family);
+  font-size: var(--vscode-editor-font-size);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: pre;
+  min-width: 0;
+}
+
+.description {
+  color: var(--vscode-descriptionForeground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hit {
+  background: var(--vscode-editor-findMatchHighlightBackground);
+  color: inherit;
+  border-radius: 2px;
+}
+
+.beside {
+  flex: none;
+  margin-left: auto;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  visibility: hidden;
+}
+
+.row:hover .beside,
+.row:focus .beside,
+.beside:focus {
+  visibility: visible;
+}
+
+.beside:hover {
+  background: var(--vscode-toolbar-hoverBackground);
+}
+
+.beside svg {
+  width: 16px;
+  height: 16px;
+  fill: var(--vscode-icon-foreground);
+}
+
+/* The theme's symbol and debug palette, the only token colours a webview can read. */
+.tk-string { color: var(--vscode-debugTokenExpression-string); }
+.tk-number { color: var(--vscode-debugTokenExpression-number); }
+.tk-variable { color: var(--vscode-debugTokenExpression-name); }
+.tk-function { color: var(--vscode-symbolIcon-functionForeground); }
+.tk-class { color: var(--vscode-symbolIcon-classForeground); }
+.tk-keyword { color: var(--vscode-symbolIcon-keywordForeground); }
+.tk-constant { color: var(--vscode-symbolIcon-constantForeground); }
+.tk-comment { color: var(--vscode-descriptionForeground); font-style: italic; }

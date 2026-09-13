@@ -18,10 +18,17 @@ export class Position {
 }
 
 export class Range {
-  constructor(
-    public readonly start: Position,
-    public readonly end: Position,
-  ) {}
+  readonly start: Position;
+  readonly end: Position;
+
+  constructor(start: Position | number, end: Position | number, endLine?: number, endCharacter?: number) {
+    this.start = start instanceof Position ? start : new Position(start, end as number);
+    this.end = end instanceof Position ? end : new Position(endLine ?? 0, endCharacter ?? 0);
+  }
+
+  get isSingleLine(): boolean {
+    return this.start.line === this.end.line;
+  }
 }
 
 export class Uri {
@@ -82,8 +89,20 @@ export class Disposable {
   }
 }
 
+/** The lines `openTextDocument` answers with, by uri; a uri missing from it is a file that is gone. */
+export const documentLines = new Map<string, string[]>();
+
 export const workspace = {
   textDocuments: [] as Array<{ isDirty: boolean; uri: Uri; getText(): string }>,
+  openTextDocument: async (uri: Uri): Promise<{ lineCount: number; lineAt(line: number): { text: string } }> => {
+    const lines = documentLines.get(uri.toString());
+
+    if (!lines) {
+      throw new Error(`cannot open ${uri.toString()}`);
+    }
+
+    return { lineCount: lines.length, lineAt: (line: number) => ({ text: lines[line] }) };
+  },
   onDidChangeTextDocument: (): { dispose(): void } => ({ dispose: () => {} }),
   asRelativePath: (uri: Uri | string): string => (typeof uri === 'string' ? uri : uri.path).replace(/^\/p\//, ''),
 };
@@ -114,6 +133,49 @@ export class ThemeIcon {
   constructor(public readonly id: string) {}
 }
 
+export enum ViewColumn {
+  Beside = -2,
+}
+
+/** What `registerWebviewViewProvider` was given, so a test can resolve the view by hand. */
+export const registeredWebviewViews: Array<{ id: string; provider: any }> = [];
+
+/** The messages posted to the stub webview, in order. */
+export const postedMessages: unknown[] = [];
+
+/** What the last `showTextDocument` was asked to open. */
+export const shownDocuments: Array<{ uri: Uri; options: unknown }> = [];
+
+/** A webview view as the provider sees it: it records what it is given and lets a test send a message back. */
+export class StubWebviewView {
+  description?: string;
+  readonly webview = {
+    options: {} as unknown,
+    html: '',
+    cspSource: 'stub-csp',
+    asWebviewUri: (uri: Uri): string => `webview://${uri.path}`,
+    postMessage: async (message: unknown): Promise<boolean> => {
+      postedMessages.push(message);
+
+      return true;
+    },
+    onDidReceiveMessage: (listener: (message: unknown) => void): Disposable => {
+      this.listener = listener;
+
+      return new Disposable(() => {});
+    },
+  };
+  private listener: ((message: unknown) => void) | null = null;
+
+  onDidDispose(): Disposable {
+    return new Disposable(() => {});
+  }
+
+  receive(message: unknown): void {
+    this.listener?.(message);
+  }
+}
+
 /** What the last `createTreeView` was given, so a test can drive the provider by hand. */
 export const createdTreeViews: Array<{ id: string; treeDataProvider: any; description?: string }> = [];
 
@@ -141,6 +203,14 @@ export const SymbolKind = {
 
 export const window = {
   showWarningMessage: (message: string): void => console.warn(message),
+  showTextDocument: async (uri: Uri, options: unknown): Promise<void> => {
+    shownDocuments.push({ uri, options });
+  },
+  registerWebviewViewProvider: (id: string, provider: any): Disposable => {
+    registeredWebviewViews.push({ id, provider });
+
+    return new Disposable(() => {});
+  },
   createTreeView: (id: string, options: { treeDataProvider: any }): { id: string; treeDataProvider: any; description?: string; dispose(): void } => {
     const view = { id, treeDataProvider: options.treeDataProvider, description: undefined as string | undefined, dispose: () => {} };
     createdTreeViews.push(view);

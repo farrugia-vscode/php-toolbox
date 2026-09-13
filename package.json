@@ -2,7 +2,7 @@
   "name": "php-toolbox",
   "displayName": "PHP Toolbox",
   "description": "Navigate and refactor PHP code the way PhpStorm does: extract and inline, change signature, move members, inherited symbols, usages grouped by intent, workspace-wide rename",
-  "version": "0.7.11",
+  "version": "0.8.1",
   "publisher": "farrugia",
   "icon": "icon.png",
   "engines": {
@@ -247,6 +247,7 @@
     "views": {
       "phpToolbox": [
         {
+          "type": "webview",
           "id": "phpToolbox.usages",
           "name": "Usages",
           "when": "phpToolbox.usages.hasListing"
