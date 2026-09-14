@@ -32,7 +32,10 @@ function watchFiles(): void {
   }
   watching = true;
 
-  const watcher = vscode.workspace.createFileSystemWatcher('**/*.php');
+  // Everything, not only PHP files: a folder moved or deleted is reported once, as the
+  // folder, and the files inside it send nothing of their own.
+  const watcher = vscode.workspace.createFileSystemWatcher('**');
+  const isPhp = (uri: vscode.Uri): boolean => uri.path.endsWith('.php');
 
   // Re-read rather than just forget: dropping the entry would hide the file from every
   // later search, since the index is only ever built once.
@@ -44,11 +47,39 @@ function watchFiles(): void {
     changed.fire(uri);
   };
 
-  watcher.onDidChange((uri) => void refresh(uri));
-  watcher.onDidCreate((uri) => void refresh(uri));
-  watcher.onDidDelete((uri) => {
+  const forget = (uri: vscode.Uri): void => {
     index?.delete(uri.toString());
     changed.fire(uri);
+  };
+
+  const forgetUnder = (folder: vscode.Uri): void => {
+    const prefix = `${folder.toString()}/`;
+    for (const key of [...(index?.keys() ?? [])]) {
+      if (key.startsWith(prefix)) {
+        forget(vscode.Uri.parse(key));
+      }
+    }
+  };
+
+  const readUnder = async (folder: vscode.Uri): Promise<void> => {
+    const files = await vscode.workspace.findFiles(new vscode.RelativePattern(folder, '**/*.php'), EXCLUDED);
+    await Promise.all(files.map(refresh));
+  };
+
+  watcher.onDidChange((uri) => {
+    if (isPhp(uri)) {
+      void refresh(uri);
+    }
+  });
+  watcher.onDidCreate((uri) => {
+    void (isPhp(uri) ? refresh(uri) : readUnder(uri));
+  });
+  watcher.onDidDelete((uri) => {
+    if (isPhp(uri)) {
+      forget(uri);
+    } else {
+      forgetUnder(uri);
+    }
   });
 }
 
