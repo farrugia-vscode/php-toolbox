@@ -106,6 +106,19 @@ export function classNameOf(type: string): string | null {
   return /^[A-Za-z_][\w\\]*$/.test(name) ? name : null;
 }
 
+/** The type a hover text gives to `$name`, or null when it gives none. */
+export function readHoverType(text: string, name: string): string | null {
+  // The `php` of a code fence would be read as a type.
+  const code = text.replace(/```\w*|<\?php/g, '');
+
+  // Servers word it differently — `@var Site $site`, `@param Site $site`, or the bare
+  // declaration — so the type is read from whatever sits just before the variable.
+  const pattern = new RegExp(`(?:@(?:var|param)\\s+)?([\\w\\\\|<>\\[\\],\\s]+?)\\s+\\$${name}\\b`);
+  const declared = pattern.exec(code)?.[1].trim();
+
+  return declared === undefined || declared === '' || declared === 'mixed' ? null : declared;
+}
+
 /** The type the server reports for the variable at `position`, or null when it has none. */
 async function typeFromServer(
   document: vscode.TextDocument,
@@ -120,17 +133,12 @@ async function typeFromServer(
     ),
   );
 
-  // Servers word it differently — `@var Site $site`, `@param Site $site`, or the bare
-  // declaration — so the type is read from whatever sits just before the variable.
-  const pattern = new RegExp(`(?:@(?:var|param)\\s+)?([\\w\\\\|<>\\[\\],\\s]+?)\\s+\\$${name}\\b`);
-
   for (const hover of hovers ?? []) {
     for (const content of hover.contents) {
-      const text = typeof content === 'string' ? content : content.value;
-      const declared = pattern.exec(text);
+      const declared = readHoverType(typeof content === 'string' ? content : content.value, name);
 
-      if (declared && declared[1].trim() !== 'mixed') {
-        return declared[1].trim();
+      if (declared !== null) {
+        return declared;
       }
     }
   }
@@ -203,6 +211,12 @@ export async function resolveVariable(
 ): Promise<Receiverclass | null> {
   if (hops > MAX_HOPS) {
     return null;
+  }
+
+  if (name === 'this') {
+    const target = await enclosingClass(document, position);
+
+    return target ? { target, isKnownToServer: true } : null;
   }
 
   const reported = await typeFromServer(document, position, name);

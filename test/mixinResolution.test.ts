@@ -3,7 +3,7 @@ import * as vscodeStub from './vscodeStub';
 
 mock.module('vscode', () => vscodeStub);
 
-const { classNameOf } = await import('../src/mixinResolution');
+const { classNameOf, readHoverType } = await import('../src/mixinResolution');
 
 describe('classNameOf', () => {
   test('reads the class out of an annotated type', () => {
@@ -26,5 +26,20 @@ describe('classNameOf', () => {
     expect(classNameOf('')).toBeNull();
     expect(classNameOf('null')).toBeNull();
     expect(classNameOf('array<array-key, mixed>')).toBe('array');
+  });
+});
+
+describe('readHoverType', () => {
+  test('does not read the language of a code fence as a type', () => {
+    expect(readHoverType('```php\n$this\n```\n', 'this')).toBeNull();
+    expect(readHoverType('```php\n<?php\n$page\n```', 'page')).toBeNull();
+  });
+
+  test('reads the type Intelephense writes after @var', () => {
+    expect(readHoverType('_@var_ `\\App\\Models\\Notification $this`', 'this')).toBe('\\App\\Models\\Notification');
+  });
+
+  test('has nothing to offer for mixed', () => {
+    expect(readHoverType('@var mixed $row', 'row')).toBeNull();
   });
 });

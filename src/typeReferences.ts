@@ -155,7 +155,8 @@ export function parseDocblockMembers(
   for (let line = docStart; line <= docEnd; line++) {
     const text = document.lineAt(line).text;
 
-    const property = /@property(?:-read|-write)?\s+(\S+)\s+\$(\w+)/.exec(text);
+    // The type can hold spaces: `array<array-key, mixed>`.
+    const property = /@property(?:-read|-write)?\s+(.+?)\s+\$(\w+)/.exec(text);
 
     if (property) {
       members.push({
@@ -190,7 +191,8 @@ export function findWordPosition(
   toLine: number,
 ): vscode.Position | null {
   const shortName = word.split('\\').pop() ?? word;
-  const pattern = new RegExp(`\\b${shortName}\\b`);
+  // `Page` in `use App\Exceptions\Page\…` is a namespace, not the class.
+  const pattern = new RegExp(`\\b${shortName}\\b(?!\\\\)`);
   for (let line = fromLine; line <= toLine && line < document.lineCount; line++) {
     const text = document.lineAt(line).text;
     const match = pattern.exec(text);

@@ -47,7 +47,15 @@ export class InheritanceResolver {
     classSymbol: vscode.DocumentSymbol,
   ): void {
     for (const member of parseDocblockMembers(document, classSymbol)) {
-      if (this.members.has(member.name)) {
+      const known = this.members.get(member.name);
+
+      // Intelephense lists a `@property` as a symbol, but without its type.
+      if (known && known.detail === '' && known.uri.toString() === uri.toString()) {
+        known.detail = member.detail;
+        continue;
+      }
+
+      if (known) {
         continue;
       }
 
