@@ -194,5 +194,5 @@ export function planExtractExpression(
 }
 
 function summaryOf(name: string, count: number): string {
-  return count > 1 ? `Extracted ${name} — ${count} occurrences replaced.` : `Extracted ${name}.`;
+  return count > 1 ? `Extracted ${name}: ${count} occurrences replaced.` : `Extracted ${name}.`;
 }

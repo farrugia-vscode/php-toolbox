@@ -136,6 +136,6 @@ export async function extractConstantToClass(): Promise<void> {
 
   await vscode.workspace.applyEdit(edit, { isRefactoring: true });
   vscode.window.showInformationMessage(
-    `${shortNameOf(host.declaration.fqn)}::${name} — ${occurrences.length} occurrence(s) replaced.`,
+    `${shortNameOf(host.declaration.fqn)}::${name}: ${occurrences.length} occurrence(s) replaced.`,
   );
 }

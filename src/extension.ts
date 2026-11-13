@@ -118,7 +118,7 @@ async function show(): Promise<void> {
   const items = groupByOrigin([...members.values()], ownName);
 
   const picked = await vscode.window.showQuickPick(items, {
-    placeHolder: `${ownName} — ${members.size} members (incl. inherited)`,
+    placeHolder: `${ownName}: ${members.size} members (incl. inherited)`,
     matchOnDescription: true,
     matchOnDetail: true,
   });

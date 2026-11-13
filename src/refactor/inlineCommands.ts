@@ -113,7 +113,7 @@ export async function inlineMethod(): Promise<void> {
 
   if (refusals.length > 0) {
     const isConfirmed = await confirm(
-      `${refusals.length} call(s) cannot be inlined — ${[...new Set(refusals)].join('; ')}. Inline the others and keep the method?`,
+      `${refusals.length} call(s) cannot be inlined: ${[...new Set(refusals)].join('; ')}. Inline the others and keep the method?`,
     );
 
     if (!isConfirmed) {

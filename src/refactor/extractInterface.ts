@@ -117,5 +117,5 @@ export async function extractInterface(): Promise<void> {
 
   await vscode.workspace.applyEdit(edit, { isRefactoring: true });
   await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(target));
-  vscode.window.showInformationMessage(`${name} — ${picked.length} method(s) published.`);
+  vscode.window.showInformationMessage(`${name}: ${picked.length} method(s) published.`);
 }

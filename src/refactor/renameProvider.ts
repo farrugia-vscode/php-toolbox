@@ -57,7 +57,7 @@ async function applyRename(fqn: string, newName: string): Promise<void> {
   }
 
   await vscode.workspace.applyEdit(edit, { isRefactoring: true });
-  vscode.window.showInformationMessage(`Renamed to ${newName} — ${referenceCount} edits.`);
+  vscode.window.showInformationMessage(`Renamed to ${newName}: ${referenceCount} edits.`);
 }
 
 /**

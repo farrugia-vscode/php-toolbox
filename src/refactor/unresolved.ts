@@ -47,7 +47,7 @@ export async function reportUnresolved(name: string, sites: UnresolvedSite[]): P
       description: `${vscode.workspace.asRelativePath(site.file.uri)} · line ${lineNumber(site)}`,
       site,
     })),
-    { placeHolder: `${name} — ${sites.length} unresolved mention(s)`, matchOnDescription: true },
+    { placeHolder: `${name}: ${sites.length} unresolved mention(s)`, matchOnDescription: true },
   );
 
   if (!picked) {

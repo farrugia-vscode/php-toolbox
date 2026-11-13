@@ -228,7 +228,7 @@ export async function renameMember(): Promise<void> {
 
   await vscode.workspace.applyEdit(rename.edit, { isRefactoring: true });
   vscode.window.showInformationMessage(
-    `Renamed to ${newName} — ${rename.count} edits across ${rename.files} file(s).`,
+    `Renamed to ${newName}: ${rename.count} edits across ${rename.files} file(s).`,
   );
 
   await reportUnresolved(target.name, rename.unresolved);

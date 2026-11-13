@@ -164,5 +164,5 @@ export async function extractTrait(): Promise<void> {
 
   await vscode.workspace.applyEdit(edit, { isRefactoring: true });
   await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(target));
-  vscode.window.showInformationMessage(`${name} — ${moved.length} member(s) moved.`);
+  vscode.window.showInformationMessage(`${name}: ${moved.length} member(s) moved.`);
 }

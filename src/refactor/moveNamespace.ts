@@ -128,7 +128,7 @@ export async function moveClass(): Promise<void> {
     );
   }
 
-  vscode.window.showInformationMessage(`${shortNameOf(newFqn)} — ${referenceCount} edits.`);
+  vscode.window.showInformationMessage(`${shortNameOf(newFqn)}: ${referenceCount} edits.`);
 }
 
 /** Whether something already sits at that path — a copy never overwrites. */

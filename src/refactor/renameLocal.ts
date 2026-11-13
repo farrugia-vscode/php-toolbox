@@ -154,7 +154,7 @@ export function planRenameLocal(text: string, offset: number, newName: string): 
 
   return {
     edits: collected,
-    summary: `Renamed $${target.name} to $${newName} — ${collected.length} mention(s).`,
+    summary: `Renamed $${target.name} to $${newName}: ${collected.length} mention(s).`,
     warning: NAMED_AT_RUNTIME.test(text.slice(owner.start, owner.end))
       ? `This scope names variables at runtime (compact, extract or $$name): mentions of $${target.name} made through a string are not renamed.`
       : undefined,

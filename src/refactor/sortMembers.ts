@@ -177,7 +177,7 @@ export function planSortMembers(text: string, parsed: ParsedFile, declaration: D
 
   return {
     edits: [{ start: members[0].start, end: members[members.length - 1].end, text: body }],
-    summary: `${declaration.name} — ${members.length} members reordered.`,
+    summary: `${declaration.name}: ${members.length} members reordered.`,
   };
 }
 

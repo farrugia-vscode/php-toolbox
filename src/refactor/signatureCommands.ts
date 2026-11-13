@@ -83,7 +83,7 @@ async function applySignature(
   await vscode.workspace.applyEdit(edit, { isRefactoring: true });
   await reportUnresolved(`${method.name}()`, unresolved.map(callSite));
   vscode.window.showInformationMessage(
-    `${method.name}() — ${sites.length - refusals.length} call(s) updated across ${files} file(s).`,
+    `${method.name}(): ${sites.length - refusals.length} call(s) updated across ${files} file(s).`,
   );
 }
 
