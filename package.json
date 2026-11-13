@@ -19,7 +19,7 @@
   "scripts": {
     "build": "bun esbuild.ts",
     "watch": "bun esbuild.ts --watch",
-    "check": "tsc -p . --noEmit",
+    "check": "tsc -p . --noEmit && tsc -p test --noEmit",
     "vscode:prepublish": "bun run build",
     "test": "bun test"
   },
