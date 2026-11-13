@@ -16,7 +16,7 @@ describe('findWordPosition', () => {
       'use App\\Models\\Page;',
     ]);
 
-    expect(findWordPosition(document, 'Page', 0, 1)).toEqual(new vscodeStub.Position(1, 15));
+    expect(findWordPosition(document, 'Page', 0, 1)).toMatchObject({ line: 1, character: 15 });
   });
 });
 
