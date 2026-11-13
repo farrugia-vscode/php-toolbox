@@ -73,10 +73,6 @@ export function parseTypeReferences(
   return { names, headerRange: [docStart, headerEndLine], traitNames, mixins };
 }
 
-/**
- * Reads `@mixin` targets from the docblock preceding the class, and returns the line
- * the search for those names should start from.
- */
 /** Line range of the docblock preceding the class declaration, if there is one. */
 export function docblockRange(
   document: vscode.TextDocument,
@@ -102,6 +98,10 @@ export function docblockRange(
   return [Math.max(line, 0), docEnd];
 }
 
+/**
+ * Reads `@mixin` targets from the docblock preceding the class, and returns the line
+ * the search for those names should start from.
+ */
 function collectMixins(
   document: vscode.TextDocument,
   startLine: number,
