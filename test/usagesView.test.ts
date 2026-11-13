@@ -89,3 +89,15 @@ describe('the usages panel', () => {
     expect(postedMessages.at(-1)).not.toBe(posted);
   });
 });
+
+describe('a listing shown before the panel was ever opened', () => {
+  test('still says what it lists once the panel comes up', async () => {
+    registerUsagesView(Uri.file('/ext') as never);
+    await showUsagesView({ subject: 'Invoice', unit: 'references', groups: [{ label: 'Instantiated', entries: [{ ...at('app/Checkout.php', 12), label: 'new Invoice()' }] }] });
+
+    const late = new StubWebviewView();
+    registeredWebviewViews.at(-1)!.provider.resolveWebviewView(late);
+
+    expect(late.description).toBe('Invoice: 1 reference');
+  });
+});

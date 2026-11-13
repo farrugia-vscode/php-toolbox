@@ -56,6 +56,11 @@ function shell(webview: vscode.Webview, extensionUri: vscode.Uri): string {
 </html>`;
 }
 
+/** What the panel title says next to its name: "Order: 3 references". */
+function summaryOf(listing: PreparedListing): string {
+  return `${listing.subject}: ${listing.count}`;
+}
+
 /**
  * The panel behind the listing: a webview drawing what `prepareListing` hands it, and
  * opening the file a line stands for when the webview asks.
@@ -80,13 +85,18 @@ class UsagesViewProvider implements vscode.WebviewViewProvider {
     view.onDidDispose(() => {
       this.view = null;
     });
+
+    // A listing shown before the panel was ever opened still names what it lists.
+    if (this.listing) {
+      view.description = summaryOf(this.listing);
+    }
   }
 
   show(listing: PreparedListing): void {
     this.listing = listing;
 
     if (this.view) {
-      this.view.description = `${listing.subject}: ${listing.count}`;
+      this.view.description = summaryOf(listing);
       this.post({ type: 'listing', listing });
     }
   }
