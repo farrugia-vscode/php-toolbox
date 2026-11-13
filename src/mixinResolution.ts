@@ -28,7 +28,8 @@ const MAX_HOPS = 5;
 const allMembers = new Map<string, Map<string, Member>>();
 const fromMixins = new Map<string, Member[]>();
 
-let isQuerying = false;
+/** A count, not a flag: two requests can overlap, and the first one done must not clear the second. */
+let pendingQueries = 0;
 
 onDidChangeFile(() => {
   allMembers.clear();
@@ -40,15 +41,15 @@ onDidChangeFile(() => {
  * answer the same requests, so without this they would call themselves.
  */
 export function isQueryingServer(): boolean {
-  return isQuerying;
+  return pendingQueries > 0;
 }
 
 async function askServer<T>(query: () => Thenable<T>): Promise<T> {
-  isQuerying = true;
+  pendingQueries++;
   try {
     return await query();
   } finally {
-    isQuerying = false;
+    pendingQueries--;
   }
 }
 
