@@ -92,7 +92,26 @@ export class Disposable {
 /** The lines `openTextDocument` answers with, by uri; a uri missing from it is a file that is gone. */
 export const documentLines = new Map<string, string[]>();
 
+type UriListener = (uri: Uri) => void;
+
+/** What the file watchers were told to call, so a test can report a file as created or changed. */
+export const fileWatchers = { change: [] as UriListener[], create: [] as UriListener[], remove: [] as UriListener[] };
+
+/** What `findFiles` answers with. */
+export const foundFiles: Uri[] = [];
+
+export class RelativePattern {}
+
+export const StatusBarAlignment = { Left: 1, Right: 2 };
+
 export const workspace = {
+  findFiles: async (): Promise<Uri[]> => [...foundFiles],
+  fs: { readFile: async (): Promise<Uint8Array> => new TextEncoder().encode('<?php') },
+  createFileSystemWatcher: () => ({
+    onDidChange: (listener: UriListener) => fileWatchers.change.push(listener),
+    onDidCreate: (listener: UriListener) => fileWatchers.create.push(listener),
+    onDidDelete: (listener: UriListener) => fileWatchers.remove.push(listener),
+  }),
   textDocuments: [] as Array<{ isDirty: boolean; uri: Uri; getText(): string }>,
   openTextDocument: async (uri: Uri): Promise<{ lineCount: number; lineAt(line: number): { text: string } }> => {
     const lines = documentLines.get(uri.toString());
@@ -202,6 +221,7 @@ export const SymbolKind = {
 };
 
 export const window = {
+  createStatusBarItem: () => ({ text: '', show: () => {}, dispose: () => {} }),
   showWarningMessage: (message: string): void => console.warn(message),
   showTextDocument: async (uri: Uri, options: unknown): Promise<void> => {
     shownDocuments.push({ uri, options });

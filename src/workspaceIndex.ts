@@ -1,6 +1,8 @@
 import * as vscode from 'vscode';
 
-const EXCLUDED = '{**/vendor/**,**/node_modules/**,**/storage/**,**/public/**}';
+/** Directories whose PHP files are not project code, at any depth. */
+const EXCLUDED_DIRECTORIES = ['vendor', 'node_modules', 'storage', 'public'];
+const EXCLUDED = `{${EXCLUDED_DIRECTORIES.map((directory) => `**/${directory}/**`).join(',')}}`;
 const READ_BATCH_SIZE = 50;
 const PROGRESS_DELAY = 400;
 
@@ -37,6 +39,14 @@ function watchFiles(): void {
   const watcher = vscode.workspace.createFileSystemWatcher('**');
   const isPhp = (uri: vscode.Uri): boolean => uri.path.endsWith('.php');
 
+  // The watcher also sees vendor/ and the other excluded directories. A `composer update`
+  // must not add their files to an index built without them.
+  const isProjectFile = (uri: vscode.Uri): boolean => {
+    const directories = vscode.workspace.asRelativePath(uri, false).split('/').slice(0, -1);
+
+    return !directories.some((directory) => EXCLUDED_DIRECTORIES.includes(directory));
+  };
+
   // Re-read rather than just forget: dropping the entry would hide the file from every
   // later search, since the index is only ever built once.
   const refresh = async (uri: vscode.Uri): Promise<void> => {
@@ -67,12 +77,16 @@ function watchFiles(): void {
   };
 
   watcher.onDidChange((uri) => {
-    if (isPhp(uri)) {
+    if (isPhp(uri) && isProjectFile(uri)) {
       void refresh(uri);
     }
   });
   watcher.onDidCreate((uri) => {
-    void (isPhp(uri) ? refresh(uri) : readUnder(uri));
+    if (!isPhp(uri)) {
+      void readUnder(uri);
+    } else if (isProjectFile(uri)) {
+      void refresh(uri);
+    }
   });
   watcher.onDidDelete((uri) => {
     if (isPhp(uri)) {
